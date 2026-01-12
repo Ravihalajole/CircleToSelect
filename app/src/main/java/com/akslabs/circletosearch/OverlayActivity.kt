@@ -81,7 +81,8 @@ class OverlayActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (isFinishing) {
-             BitmapRepository.clear()
+             com.akslabs.circletosearch.data.BitmapRepository.clear()
+             com.akslabs.circletosearch.utils.StorageUtils.clearAppCache(this)
         }
     }
 }

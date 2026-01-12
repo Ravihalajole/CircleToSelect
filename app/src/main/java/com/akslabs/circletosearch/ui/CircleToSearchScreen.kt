@@ -482,7 +482,13 @@ fun CircleToSearchScreen(
                     initializedEngines.clear() // Reset smart loading
                     // Do NOT destroy webviews here to keep them cached if possible? 
                     // PROBABLY safer to destroy to avoid stale state from previous searches.
-                    webViews.values.forEach { it.destroy() }
+                    webViews.values.forEach { 
+                        it.stopLoading()
+                        it.clearHistory()
+                        it.clearCache(true)
+                        it.loadUrl("about:blank")
+                        it.destroy() 
+                    }
                     webViews.clear()
                 }
 
@@ -609,7 +615,13 @@ fun CircleToSearchScreen(
                     // Cleanup on Dispose
                     DisposableEffect(Unit) {
                         onDispose {
-                            webViews.values.forEach { it.destroy() }
+                            webViews.values.forEach { 
+                                it.stopLoading()
+                                it.clearHistory()
+                                it.clearCache(true)
+                                it.loadUrl("about:blank")
+                                it.destroy() 
+                            }
                             webViews.clear()
                         }
                     }
