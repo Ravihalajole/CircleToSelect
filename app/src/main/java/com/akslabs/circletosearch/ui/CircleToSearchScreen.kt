@@ -762,6 +762,7 @@ fun CircleToSearchScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.15f))
                             .background(
                                 brush = Brush.verticalGradient(
                                     colors = OverlayGradientColors.map { it.copy(alpha = 0.15f) }
