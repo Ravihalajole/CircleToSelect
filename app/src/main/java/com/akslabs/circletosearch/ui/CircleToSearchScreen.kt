@@ -160,7 +160,8 @@ import android.os.Build
 fun CircleToSearchScreen(
     screenshot: Bitmap?,
     onClose: () -> Unit,
-    onCopyText: () -> Unit = {}
+    onCopyText: () -> Unit = {},
+    onExitCopyMode: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -210,6 +211,9 @@ fun CircleToSearchScreen(
         }
     }
     val searchEngines = preferredOrder
+    
+    // Copy Mode internal state
+    var isCopyMode by remember { mutableStateOf(false) }
 
 
     // Support Settings Sheet
@@ -442,6 +446,11 @@ fun CircleToSearchScreen(
 
     // Back Handler Logic
     BackHandler(enabled = true) {
+        if (isCopyMode) {
+            isCopyMode = false
+            onExitCopyMode()
+            return@BackHandler
+        }
         val currentWebView = webViews[selectedEngine]
         if (currentWebView != null && currentWebView.canGoBack()) {
             currentWebView.goBack()
@@ -744,25 +753,44 @@ fun CircleToSearchScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .background(Color.Black)
+                .background(Color.Transparent) // Changed from Black to Transparent
         ) {
+            // Close button for Copy Mode (Top Left)
+            if (isCopyMode) {
+                IconButton(
+                    onClick = { 
+                        isCopyMode = false
+                        onExitCopyMode()
+                    },
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(16.dp)
+                        .align(Alignment.TopStart)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
+                        .zIndex(200f)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Exit Copy Mode")
+                }
+            }
+
             // Friendly Message Overlay (Top Center)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .offset(y = 100.dp) // Offset to not cover potential top icons
-                    .zIndex(100f), // Ensure on top
-                contentAlignment = Alignment.TopCenter
-            ) {
-                FriendlyMessageBubble(
-                    message = friendlyMessage,
-                    visible = isMessageVisible
-                )
+            if (!isCopyMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset(y = 100.dp) // Offset to not cover potential top icons
+                        .zIndex(100f), // Ensure on top
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    FriendlyMessageBubble(
+                        message = friendlyMessage,
+                        visible = isMessageVisible
+                    )
+                }
             }
 
             // 1. Screenshot Layer
-            if (screenshot != null) {
+            if (screenshot != null && !isCopyMode) {
                 Box(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -788,7 +816,7 @@ fun CircleToSearchScreen(
             }
 
             // 2. Gradient Border Layer (Overlaying screenshot, clipped to rounded corners)
-            if (showGradientBorder) {
+            if (showGradientBorder && !isCopyMode) {
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isUIVisible,
                     enter = androidx.compose.animation.fadeIn(animationSpec = tween(700))
@@ -809,174 +837,176 @@ fun CircleToSearchScreen(
             }
 
             // 3. Drawing Canvas (Interactive Layer)
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                // Clear previous state
-                                currentPathPoints.clear()
-                                currentPathPoints.add(offset)
-                                selectionRect = null
-                                scope.launch { selectionAnim.snapTo(0f) }
-                            },
-                            onDrag = { change, _ ->
-                                val offset = change.position
-                                currentPathPoints.add(offset)
-                            },
-                            onDragEnd = {
-                                if (currentPathPoints.isNotEmpty()) {
-                                    var minX = Float.MAX_VALUE
-                                    var minY = Float.MAX_VALUE
-                                    var maxX = Float.MIN_VALUE
-                                    var maxY = Float.MIN_VALUE
+            if (!isCopyMode) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    // Clear previous state
+                                    currentPathPoints.clear()
+                                    currentPathPoints.add(offset)
+                                    selectionRect = null
+                                    scope.launch { selectionAnim.snapTo(0f) }
+                                },
+                                onDrag = { change, _ ->
+                                    val offset = change.position
+                                    currentPathPoints.add(offset)
+                                },
+                                onDragEnd = {
+                                    if (currentPathPoints.isNotEmpty()) {
+                                        var minX = Float.MAX_VALUE
+                                        var minY = Float.MAX_VALUE
+                                        var maxX = Float.MIN_VALUE
+                                        var maxY = Float.MIN_VALUE
 
-                                    currentPathPoints.forEach { p ->
-                                        minX = min(minX, p.x)
-                                        minY = min(minY, p.y)
-                                        maxX = max(maxX, p.x)
-                                        maxY = max(maxY, p.y)
-                                    }
-                                    
-                                    val rect = Rect(
-                                        minX.toInt(),
-                                        minY.toInt(),
-                                        maxX.toInt(),
-                                        maxY.toInt()
-                                    )
-                                    
-                                    selectionRect = rect
-                                    // Clear points to remove the drawn line and show the lens rect
-                                    currentPathPoints.clear() 
-                                    
-                                    scope.launch {
-                                        selectionAnim.animateTo(
-                                            targetValue = 1f,
-                                            animationSpec = tween(600)
+                                        currentPathPoints.forEach { p ->
+                                            minX = min(minX, p.x)
+                                            minY = min(minY, p.y)
+                                            maxX = max(maxX, p.x)
+                                            maxY = max(maxY, p.y)
+                                        }
+                                        
+                                        val rect = Rect(
+                                            minX.toInt(),
+                                            minY.toInt(),
+                                            maxX.toInt(),
+                                            maxY.toInt()
                                         )
-                                        android.util.Log.d("CircleToSearch", "Selection rect: ${rect.left},${rect.top},${rect.right},${rect.bottom}")
-                                        selectedBitmap = ImageUtils.cropBitmap(screenshot!!, rect)
-                                        android.util.Log.d("CircleToSearch", "Cropped bitmap size: ${selectedBitmap!!.width}x${selectedBitmap!!.height}")
-                                        isSearching = true
-                                        // Sheet expands automatically in LaunchedEffect
+                                        
+                                        selectionRect = rect
+                                        // Clear points to remove the drawn line and show the lens rect
+                                        currentPathPoints.clear() 
+                                        
+                                        scope.launch {
+                                            selectionAnim.animateTo(
+                                                targetValue = 1f,
+                                                animationSpec = tween(600)
+                                            )
+                                            android.util.Log.d("CircleToSearch", "Selection rect: ${rect.left},${rect.top},${rect.right},${rect.bottom}")
+                                            selectedBitmap = ImageUtils.cropBitmap(screenshot!!, rect)
+                                            android.util.Log.d("CircleToSearch", "Cropped bitmap size: ${selectedBitmap!!.width}x${selectedBitmap!!.height}")
+                                            isSearching = true
+                                            // Sheet expands automatically in LaunchedEffect
+                                        }
                                     }
                                 }
-                            }
-                        )
-                    }
-            ) {
-                // Draw current path (Real-time)
-                if (currentPathPoints.size > 1) {
-                    val path = Path().apply {
-                        moveTo(currentPathPoints.first().x, currentPathPoints.first().y)
-                        for (i in 1 until currentPathPoints.size) {
-                            lineTo(currentPathPoints[i].x, currentPathPoints[i].y)
+                            )
                         }
-                    }
-                    
-                    // Glow
-                    drawPath(
-                        path = path,
-                        brush = Brush.linearGradient(OverlayGradientColors),
-                        style = Stroke(width = 30f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        alpha = 0.6f
-                    )
-                    // Core
-                    drawPath(
-                        path = path,
-                        color = Color.White,
-                        style = Stroke(width = 12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                    )
-                }
-
-                // Draw Lens Animation (Rounded Corner Brackets)
-                if (selectionRect != null && selectionAnim.value > 0f) {
-                    val rect = selectionRect!!
-                    val progress = selectionAnim.value
-                    val left = rect.left.toFloat()
-                    val top = rect.top.toFloat()
-                    val right = rect.right.toFloat()
-                    val bottom = rect.bottom.toFloat()
-                    
-                    val width = right - left
-                    val height = bottom - top
-                    val cornerRadius = 64f // Increased radius for rounder look
-                    val armLength = min(width, height) * 0.2f // Length of the straight part
-
-                    // Top Left
-                    val tlPath = Path().apply {
-                        moveTo(left, top + armLength)
-                        lineTo(left, top + cornerRadius)
-                        arcTo(
-                            rect = androidx.compose.ui.geometry.Rect(left, top, left + 2 * cornerRadius, top + 2 * cornerRadius),
-                            startAngleDegrees = 180f,
-                            sweepAngleDegrees = 90f,
-                            forceMoveTo = false
+                ) {
+                    // Draw current path (Real-time)
+                    if (currentPathPoints.size > 1) {
+                        val path = Path().apply {
+                            moveTo(currentPathPoints.first().x, currentPathPoints.first().y)
+                            for (i in 1 until currentPathPoints.size) {
+                                lineTo(currentPathPoints[i].x, currentPathPoints[i].y)
+                            }
+                        }
+                        
+                        // Glow
+                        drawPath(
+                            path = path,
+                            brush = Brush.linearGradient(OverlayGradientColors),
+                            style = Stroke(width = 30f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                            alpha = 0.6f
                         )
-                        lineTo(left + armLength, top)
-                    }
-                    // Top Right
-                    val trPath = Path().apply {
-                        moveTo(right - armLength, top)
-                        lineTo(right - cornerRadius, top)
-                        arcTo(
-                            rect = androidx.compose.ui.geometry.Rect(right - 2 * cornerRadius, top, right, top + 2 * cornerRadius),
-                            startAngleDegrees = 270f,
-                            sweepAngleDegrees = 90f,
-                            forceMoveTo = false
+                        // Core
+                        drawPath(
+                            path = path,
+                            color = Color.White,
+                            style = Stroke(width = 12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                         )
-                        lineTo(right, top + armLength)
-                    }
-                    // Bottom Right
-                    val brPath = Path().apply {
-                        moveTo(right, bottom - armLength)
-                        lineTo(right, bottom - cornerRadius)
-                        arcTo(
-                            rect = androidx.compose.ui.geometry.Rect(right - 2 * cornerRadius, bottom - 2 * cornerRadius, right, bottom),
-                            startAngleDegrees = 0f,
-                            sweepAngleDegrees = 90f,
-                            forceMoveTo = false
-                        )
-                        lineTo(right - armLength, bottom)
-                    }
-                    // Bottom Left
-                    val blPath = Path().apply {
-                        moveTo(left + armLength, bottom)
-                        lineTo(left + cornerRadius, bottom)
-                        arcTo(
-                            rect = androidx.compose.ui.geometry.Rect(left, bottom - 2 * cornerRadius, left + 2 * cornerRadius, bottom),
-                            startAngleDegrees = 90f,
-                            sweepAngleDegrees = 90f,
-                            forceMoveTo = false
-                        )
-                        lineTo(left, bottom - armLength)
                     }
 
-                    val bracketAlpha = progress
-                    val bracketStroke = Stroke(width = 12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                    
-                    // Draw Brackets with Glow
-                    listOf(tlPath, trPath, brPath, blPath).forEach { p ->
-                        drawPath(p, Color.White, style = bracketStroke, alpha = bracketAlpha)
-                        drawPath(p, Brush.linearGradient(OverlayGradientColors), style = Stroke(width = 20f, cap = StrokeCap.Round), alpha = bracketAlpha * 0.5f)
+                    // Draw Lens Animation (Rounded Corner Brackets)
+                    if (selectionRect != null && selectionAnim.value > 0f) {
+                        val rect = selectionRect!!
+                        val progress = selectionAnim.value
+                        val left = rect.left.toFloat()
+                        val top = rect.top.toFloat()
+                        val right = rect.right.toFloat()
+                        val bottom = rect.bottom.toFloat()
+                        
+                        val width = right - left
+                        val height = bottom - top
+                        val cornerRadius = 64f // Increased radius for rounder look
+                        val armLength = min(width, height) * 0.2f // Length of the straight part
+
+                        // Top Left
+                        val tlPath = Path().apply {
+                            moveTo(left, top + armLength)
+                            lineTo(left, top + cornerRadius)
+                            arcTo(
+                                rect = androidx.compose.ui.geometry.Rect(left, top, left + 2 * cornerRadius, top + 2 * cornerRadius),
+                                startAngleDegrees = 180f,
+                                sweepAngleDegrees = 90f,
+                                forceMoveTo = false
+                            )
+                            lineTo(left + armLength, top)
+                        }
+                        // Top Right
+                        val trPath = Path().apply {
+                            moveTo(right - armLength, top)
+                            lineTo(right - cornerRadius, top)
+                            arcTo(
+                                rect = androidx.compose.ui.geometry.Rect(right - 2 * cornerRadius, top, right, top + 2 * cornerRadius),
+                                startAngleDegrees = 270f,
+                                sweepAngleDegrees = 90f,
+                                forceMoveTo = false
+                            )
+                            lineTo(right, top + armLength)
+                        }
+                        // Bottom Right
+                        val brPath = Path().apply {
+                            moveTo(right, bottom - armLength)
+                            lineTo(right, bottom - cornerRadius)
+                            arcTo(
+                                rect = androidx.compose.ui.geometry.Rect(right - 2 * cornerRadius, bottom - 2 * cornerRadius, right, bottom),
+                                startAngleDegrees = 0f,
+                                sweepAngleDegrees = 90f,
+                                forceMoveTo = false
+                            )
+                            lineTo(right - armLength, bottom)
+                        }
+                        // Bottom Left
+                        val blPath = Path().apply {
+                            moveTo(left + armLength, bottom)
+                            lineTo(left + cornerRadius, bottom)
+                            arcTo(
+                                rect = androidx.compose.ui.geometry.Rect(left, bottom - 2 * cornerRadius, left + 2 * cornerRadius, bottom),
+                                startAngleDegrees = 90f,
+                                sweepAngleDegrees = 90f,
+                                forceMoveTo = false
+                            )
+                            lineTo(left, bottom - armLength)
+                        }
+
+                        val bracketAlpha = progress
+                        val bracketStroke = Stroke(width = 12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                        
+                        // Draw Brackets with Glow
+                        listOf(tlPath, trPath, brPath, blPath).forEach { p ->
+                            drawPath(p, Color.White, style = bracketStroke, alpha = bracketAlpha)
+                            drawPath(p, Brush.linearGradient(OverlayGradientColors), style = Stroke(width = 20f, cap = StrokeCap.Round), alpha = bracketAlpha * 0.5f)
+                        }
+                        
+                        // Optional: Flash effect inside
+                         drawRoundRect(
+                            color = Color.White,
+                            topLeft = Offset(left, top),
+                            size = Size(width, height),
+                            cornerRadius = CornerRadius(32f),
+                            style = Stroke(width = 4f),
+                            alpha = (1f - progress) * 0.5f
+                        )
                     }
-                    
-                    // Optional: Flash effect inside
-                     drawRoundRect(
-                        color = Color.White,
-                        topLeft = Offset(left, top),
-                        size = Size(width, height),
-                        cornerRadius = CornerRadius(32f),
-                        style = Stroke(width = 4f),
-                        alpha = (1f - progress) * 0.5f
-                    )
                 }
             }
 
             // 4. Header (Top)
             androidx.compose.animation.AnimatedVisibility(
-                visible = isUIVisible,
+                visible = isUIVisible && !isCopyMode,
                 enter = androidx.compose.animation.slideInVertically(
                     initialOffsetY = { -it }, // Commence au-dessus de l'écran (-100%)
                     animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
@@ -1159,10 +1189,10 @@ fun CircleToSearchScreen(
             }
             // 5. Bottom Bar — Material 3 Expressive two-row card
             // State for Copy Text mode
-            var isCopyTextActive by remember { mutableStateOf(false) }
+            var isCopyTextTriggered by remember { mutableStateOf(false) }
 
             androidx.compose.animation.AnimatedVisibility(
-                visible = isUIVisible,
+                visible = isUIVisible && !isCopyMode,
                 enter = slideInVertically(
                     initialOffsetY = { it }, // slides up from below
                     animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0f, 0f, 0.2f, 1f))
@@ -1191,110 +1221,110 @@ fun CircleToSearchScreen(
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── ROW 1: Main search pill ─────────────────────────────
-                        androidx.compose.material3.Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(60.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainer,
-                            tonalElevation = 2.dp
+                        // ── ROW 1: Search Pill + Instant Actions (Song, Translate) ──
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
+                            // Main Search Pill
+                            androidx.compose.material3.Surface(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .weight(1f)
+                                    .height(60.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                tonalElevation = 2.dp
                             ) {
-                                // App logo — tapping expands search results sheet
-                                Image(
-                                    painter = painterResource(id = com.akslabs.circletosearch.R.drawable.circletosearch),
-                                    contentDescription = "Circle to Search Logo",
+                                Row(
                                     modifier = Modifier
-                                        .size(44.dp)
-                                        .clickable {
-                                            haptic.performHapticFeedback(
-                                                androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
-                                            )
-                                            scope.launch { scaffoldState.bottomSheetState.expand() }
-                                        }
-                                )
-
-                                Spacer(modifier = Modifier.weight(1f))
-
-                                // Mic button — voice search
-                                val micInteraction = remember { MutableInteractionSource() }
-                                val micPressed by micInteraction.collectIsPressedAsState()
-                                val micScale by animateFloatAsState(
-                                    targetValue = if (micPressed) 0.92f else 1f,
-                                    animationSpec = spring(stiffness = 400f, dampingRatio = 0.75f),
-                                    label = "micScale"
-                                )
-                                IconButton(
-                                    onClick = {
-                                        haptic.performHapticFeedback(
-                                            androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
-                                        )
-                                        try {
-                                            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("CircleToSearch", "Voice search failed", e)
-                                        }
-                                    },
-                                    interactionSource = micInteraction,
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .graphicsLayer { scaleX = micScale; scaleY = micScale }
+                                        .fillMaxSize()
+                                        .padding(horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        Icons.Default.Mic,
-                                        contentDescription = "Voice Search",
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(24.dp)
+                                    // App logo
+                                    Image(
+                                        painter = painterResource(id = com.akslabs.circletosearch.R.drawable.circletosearch),
+                                        contentDescription = "Logo",
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clickable {
+                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                scope.launch { scaffoldState.bottomSheetState.expand() }
+                                            }
                                     )
-                                }
 
-                                Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.weight(1f))
 
-                                // Lens button — Google Lens visual search
-                                val lensInteraction = remember { MutableInteractionSource() }
-                                val lensPressed by lensInteraction.collectIsPressedAsState()
-                                val lensScale by animateFloatAsState(
-                                    targetValue = if (lensPressed) 0.92f else 1f,
-                                    animationSpec = spring(stiffness = 400f, dampingRatio = 0.75f),
-                                    label = "lensScale"
-                                )
-                                IconButton(
-                                    onClick = {
-                                        haptic.performHapticFeedback(
-                                            androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
-                                        )
-                                        // Reuse existing Google Lens flow
-                                        uiPreferences.setUseGoogleLensOnly(true)
-                                        if (screenshot != null) {
-                                            scope.launch {
+                                    // Mic Button
+                                    IconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                            try {
+                                                val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                                    putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {}
+                                        },
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Icon(Icons.Default.Mic, contentDescription = "Voice Search")
+                                    }
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                    // Lens Button
+                                    IconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                            uiPreferences.setUseGoogleLensOnly(true)
+                                            if (screenshot != null) {
                                                 selectedBitmap = screenshot
                                             }
-                                        }
-                                    },
-                                    interactionSource = lensInteraction,
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .graphicsLayer { scaleX = lensScale; scaleY = lensScale }
-                                ) {
-                                    // Use circletosearch ring logo as lens indicator
-                                    Icon(
-                                        painter = painterResource(id = com.akslabs.circletosearch.R.drawable.circletosearch),
-                                        contentDescription = "Google Lens",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(26.dp)
-                                    )
+                                        },
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.circletosearch), contentDescription = "Lens", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+                                    }
                                 }
+                            }
+
+                            // Circular Button: Song
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    try {
+                                        val shazamIntent = context.packageManager.getLaunchIntentForPackage("com.shazam.android")
+                                        val soundHoundIntent = context.packageManager.getLaunchIntentForPackage("com.melodis.midomiMusicIdentifier.freemium")
+                                        val launchIntent = (shazamIntent ?: soundHoundIntent)?.apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                        if (launchIntent != null) context.startActivity(launchIntent)
+                                        else context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?q=shazam&c=apps")).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                    } catch (e: Exception) {}
+                                },
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape),
+                            ) {
+                                Icon(Icons.Default.MusicNote, contentDescription = "Song Search")
+                            }
+
+                            // Circular Button: Translate
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    try {
+                                        val intent = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.translate")?.apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                        if (intent != null) context.startActivity(intent)
+                                        else context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://translate.google.com")).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                    } catch (e: Exception) {}
+                                },
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape),
+                            ) {
+                                Icon(Icons.Default.Translate, contentDescription = "Translate")
                             }
                         }
 
@@ -1304,215 +1334,67 @@ fun CircleToSearchScreen(
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Helper composable for each tonal icon button with label
                             @Composable
-                            fun BottomBarButton(
-                                label: String,
-                                icon: @Composable () -> Unit,
-                                onClick: () -> Unit
-                            ) {
-                                val interactionSource = remember { MutableInteractionSource() }
-                                val isPressed by interactionSource.collectIsPressedAsState()
-                                val scale by animateFloatAsState(
-                                    targetValue = if (isPressed) 0.92f else 1f,
-                                    animationSpec = spring(
-                                        stiffness = Spring.StiffnessMediumLow,
-                                        dampingRatio = 0.75f
-                                    ),
-                                    label = "scale_$label"
-                                )
-
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = scale
-                                        scaleY = scale
-                                    }
-                                ) {
-                                    FilledTonalIconButton(
-                                        onClick = {
-                                            haptic.performHapticFeedback(
-                                                androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
-                                            )
-                                            onClick()
-                                        },
-                                        modifier = Modifier.size(52.dp),
-                                        interactionSource = interactionSource
-                                    ) {
-                                        icon()
-                                    }
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        modifier = Modifier.wrapContentSize()
-                                    )
+                            fun BottomBarButton(label: String, icon: @Composable () -> Unit, onClick: () -> Unit) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    FilledTonalIconButton(onClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onClick() }, modifier = Modifier.size(52.dp)) { icon() }
+                                    Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
                                 }
                             }
 
-                            // 1. Song Search ♪
-                            BottomBarButton(
-                                label = "Song",
-                                icon = { Icon(Icons.Default.MusicNote, contentDescription = "Song Search") },
-                                onClick = {
-                                    try {
-                                        // Try Shazam first, fallback to SoundHound, fallback to chooser
-                                        val shazamIntent = context.packageManager
-                                            .getLaunchIntentForPackage("com.shazam.android")
-                                        val soundHoundIntent = context.packageManager
-                                            .getLaunchIntentForPackage("com.melodis.midomiMusicIdentifier.freemium")
-                                        val launchIntent = (shazamIntent ?: soundHoundIntent)?.apply {
-                                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        if (launchIntent != null) {
-                                            context.startActivity(launchIntent)
-                                        } else {
-                                            // Fallback: open Play Store search
-                                            context.startActivity(
-                                                android.content.Intent(
-                                                    android.content.Intent.ACTION_VIEW,
-                                                    android.net.Uri.parse("https://play.google.com/store/search?q=shazam&c=apps")
-                                                ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                            )
-                                        }
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("CircleToSearch", "Song search failed", e)
+                            // Share
+                            BottomBarButton("Share", { Icon(Icons.Default.Send, null) }) {
+                                if (screenshot != null) {
+                                    scope.launch {
+                                        try {
+                                            val path = ImageUtils.saveBitmap(context, selectedBitmap ?: screenshot)
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.akslabs.circletosearch.fileprovider", java.io.File(path))
+                                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, uri); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION); addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Image").apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                        } catch (e: Exception) {}
                                     }
                                 }
-                            )
+                            }
 
-                            // 2. Translate 文A
-                            BottomBarButton(
-                                label = "Translate",
-                                icon = { Icon(Icons.Default.Translate, contentDescription = "Translate") },
-                                onClick = {
-                                    try {
-                                        // Google Translate deep link
-                                        val intent = context.packageManager
-                                            .getLaunchIntentForPackage("com.google.android.apps.translate")
-                                            ?.apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                        if (intent != null) {
-                                            context.startActivity(intent)
-                                        } else {
-                                            context.startActivity(
-                                                android.content.Intent(
-                                                    android.content.Intent.ACTION_VIEW,
-                                                    android.net.Uri.parse("https://translate.google.com")
-                                                ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                            )
-                                        }
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("CircleToSearch", "Translate failed", e)
-                                    }
+                            // GitHub
+                            BottomBarButton("GitHub", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.github), null, modifier = Modifier.size(22.dp)) }) {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/aks-labs")).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                            }
+
+                            // Telegram
+                            BottomBarButton("Telegram", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.telegram), null, modifier = Modifier.size(22.dp)) }) {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/akslabs")).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                            }
+
+                            // Donate
+                            BottomBarButton("Donate", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.donation), null, modifier = Modifier.size(22.dp)) }) {
+                                showSupportSheet = true
+                            }
+
+                            // Copy Text
+                            BottomBarButton("Copy Text", { Icon(Icons.Default.TextFields, null) }) {
+                                isCopyMode = true
+                                isCopyTextTriggered = true
+                            }
+
+                            // Fullscreen
+                            BottomBarButton("Fullscreen", { Icon(Icons.Default.Fullscreen, null) }) {
+                                if (screenshot != null) {
+                                    selectionRect = Rect(0, 0, screenshot.width, screenshot.height)
+                                    currentPathPoints.clear()
+                                    scope.launch { selectionAnim.snapTo(0f); selectionAnim.animateTo(1f, tween(600)); selectedBitmap = screenshot; isSearching = true }
                                 }
-                            )
+                            }
+                        }
+                    }
+                }
+            }
 
-                            // 3. Share / Send ✈
-                            BottomBarButton(
-                                label = "Share",
-                                icon = { Icon(Icons.Default.Send, contentDescription = "Share") },
-                                onClick = {
-                                    if (screenshot != null) {
-                                        scope.launch {
-                                            try {
-                                                val path = com.akslabs.circletosearch.utils.ImageUtils
-                                                    .saveBitmap(context, selectedBitmap ?: screenshot)
-                                                val file = java.io.File(path)
-                                                val uri = androidx.core.content.FileProvider.getUriForFile(
-                                                    context,
-                                                    "com.akslabs.circletosearch.fileprovider",
-                                                    file
-                                                )
-                                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                    type = "image/*"
-                                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                }
-                                                context.startActivity(
-                                                    android.content.Intent.createChooser(shareIntent, "Share Image")
-                                                        .apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                                )
-                                            } catch (e: Exception) {
-                                                android.util.Log.e("CircleToSearch", "Share failed", e)
-                                            }
-                                        }
-                                    }
-                                }
-                            )
-
-                            // 4. GitHub 🐙
-                            BottomBarButton(
-                                label = "GitHub",
-                                icon = {
-                                    Icon(
-                                        painterResource(id = com.akslabs.circletosearch.R.drawable.github),
-                                        contentDescription = "GitHub",
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                },
-                                onClick = {
-                                    context.startActivity(
-                                        android.content.Intent(
-                                            android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse("https://github.com/aks-labs")
-                                        ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-                                    )
-                                }
-                            )
-
-                            // 5. Donate 🤲♥
-                            BottomBarButton(
-                                label = "Donate",
-                                icon = {
-                                    Icon(
-                                        painterResource(id = com.akslabs.circletosearch.R.drawable.donation),
-                                        contentDescription = "Donate",
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                },
-                                onClick = { showSupportSheet = true }
-                            )
-
-                            // 6. Copy Text T|
-                            BottomBarButton(
-                                label = "Copy Text",
-                                icon = { Icon(Icons.Default.TextFields, contentDescription = "Copy Text") },
-                                onClick = { isCopyTextActive = true }
-                            )
-
-                            // 7. Fullscreen ⛶
-                            BottomBarButton(
-                                label = "Fullscreen",
-                                icon = { Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen") },
-                                onClick = {
-                                    if (screenshot != null) {
-                                        val rect = Rect(0, 0, screenshot.width, screenshot.height)
-                                        selectionRect = rect
-                                        currentPathPoints.clear()
-                                        scope.launch {
-                                            selectionAnim.snapTo(0f)
-                                            selectionAnim.animateTo(1f, tween(600))
-                                            selectedBitmap = screenshot
-                                            isSearching = true
-                                        }
-                                    }
-                                }
-                            )
-                        } // End Row 2
-                    } // End Column
-                } // End outer Surface card
-            } // End AnimatedVisibility
-
-            // Copy Text overlay activation — fires a callback to OverlayActivity
-            LaunchedEffect(isCopyTextActive) {
-                if (isCopyTextActive) {
+            // Copy Text overlay activation
+            LaunchedEffect(isCopyTextTriggered) {
+                if (isCopyTextTriggered) {
                     onCopyText()
-                    isCopyTextActive = false
+                    isCopyTextTriggered = false
                 }
             }
 

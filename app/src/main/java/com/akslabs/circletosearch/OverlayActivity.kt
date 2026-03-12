@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.akslabs.circletosearch.data.BitmapRepository
 import com.akslabs.circletosearch.ui.CircleToSearchScreen
 import com.akslabs.circletosearch.ui.components.CopyTextOverlayManager
@@ -49,7 +50,8 @@ class OverlayActivity : ComponentActivity() {
             CircleToSearchTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color.Transparent
+                    color = Color.Transparent,
+                    tonalElevation = 0.dp
                 ) {
                     CircleToSearchScreen(
                         screenshot = screenshotBitmap.value,
@@ -57,7 +59,11 @@ class OverlayActivity : ComponentActivity() {
                             BitmapRepository.clear()
                             finish() 
                         },
-                        onCopyText = { activateCopyText() }
+                        onCopyText = { activateCopyText() },
+                        onExitCopyMode = { 
+                            copyTextManager?.dismiss()
+                            copyTextManager = null
+                        }
                     )
                 }
             }

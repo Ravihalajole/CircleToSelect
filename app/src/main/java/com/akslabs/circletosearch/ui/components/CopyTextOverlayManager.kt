@@ -133,8 +133,10 @@ class CopyTextOverlayManager(
      * Null-safe; never throws.
      */
     private fun collectTextRects(root: AccessibilityNodeInfo?): List<Rect> {
+        android.util.Log.d("CTS_Scan", "collectTextRects root null: ${root == null}")
         if (root == null) return emptyList()
         val result = mutableListOf<Rect>()
+        var totalNodesScanned = 0
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
 
@@ -160,10 +162,12 @@ class CopyTextOverlayManager(
                 for (i in 0 until node.childCount) {
                     node.getChild(i)?.let { queue.add(it) }
                 }
+                totalNodesScanned++
             } catch (_: Exception) {
                 /* Skip broken/recycled nodes */
             }
         }
+        android.util.Log.d("CTS_Scan", "Total nodes scanned: $totalNodesScanned, Text rects found: ${result.size}")
         return result
     }
 
@@ -227,15 +231,22 @@ class CopyTextOverlayManager(
         }
 
         override fun onDraw(canvas: Canvas) {
+            // 1. If no rects yet, don't draw any dim to allow full transparency
+            if (textRects.isEmpty()) {
+                // Draw floating action toolbar if exists (unlikely before rects found)
+                toolbarAnchor?.let { drawFloatingToolbar(canvas, it) }
+                return
+            }
+
             // saveLayer is required for PorterDuff.CLEAR to work on this layer
             val saveCount = canvas.saveLayer(
                 0f, 0f, width.toFloat(), height.toFloat(), null
             )
 
-            // 1. Dim the entire screen at 15% opacity
+            // 2. Dim the entire screen at 15% opacity
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
 
-            // 2. Punch out each text region — dim is erased, showing full-brightness content
+            // 3. Punch out each text region — dim is erased, showing full-brightness content
             for (rect in textRects) {
                 canvas.drawRoundRect(
                     rect.left.toFloat() - 2f,
@@ -248,7 +259,7 @@ class CopyTextOverlayManager(
 
             canvas.restoreToCount(saveCount)
 
-            // 3. Draw floating action toolbar above the tapped rect (outside saveLayer)
+            // 4. Draw floating action toolbar above the tapped rect (outside saveLayer)
             toolbarAnchor?.let { drawFloatingToolbar(canvas, it) }
         }
 

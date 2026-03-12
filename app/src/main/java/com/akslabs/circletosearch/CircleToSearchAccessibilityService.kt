@@ -730,6 +730,7 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // Forward scroll events to the Copy Text overlay for live re-scan
+        // Only if it's a scroll event and the copy manager is active
         if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
             copyTextManager?.rescanNodes()
         }
@@ -747,11 +748,40 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         }
 
         /**
-         * Returns the current root AccessibilityNodeInfo for the active window.
-         * Used by [com.akslabs.circletosearch.ui.components.CopyTextOverlayManager]
-         * to scan on-screen text nodes.
+         * Returns the current root AccessibilityNodeInfo for the active application window.
+         * Skips TYPE_ACCESSIBILITY_OVERLAY windows (like our own UI) to find underlying text.
          */
-        fun getRootNode(): AccessibilityNodeInfo? = instance?.rootInActiveWindow
+        fun getRootNode(): AccessibilityNodeInfo? {
+            val service = instance ?: return null
+            android.util.Log.d("CTS_Node", "getRootNode triggered")
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                val ourPackage = service.packageName
+                val windows = service.windows
+                android.util.Log.d("CTS_Node", "Window count: ${windows.size}")
+                
+                // 1. Try to find the application window that isn't us
+                val appWindow = windows.firstOrNull { window ->
+                    window.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    window.root?.packageName != ourPackage
+                }
+                
+                if (appWindow != null) {
+                    android.util.Log.d("CTS_Node", "Found app window: ${appWindow.root?.packageName}")
+                    return appWindow.root
+                }
+                
+                // 2. Fallback: Find any window that isn't our package
+                val otherWindow = windows.firstOrNull { it.root?.packageName != ourPackage }
+                if (otherWindow != null) {
+                    android.util.Log.d("CTS_Node", "Fallback to other window: ${otherWindow.root?.packageName}")
+                    return otherWindow.root
+                }
+            }
+            
+            android.util.Log.d("CTS_Node", "Defaulting to rootInActiveWindow")
+            return service.rootInActiveWindow
+        }
 
         /** Allows OverlayActivity to register an active CopyTextOverlayManager
          * so scroll events can trigger a live re-scan. */
