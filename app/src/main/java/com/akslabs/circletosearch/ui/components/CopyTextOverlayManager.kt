@@ -250,34 +250,35 @@ class CopyTextOverlayManager(
         }
 
         private val selectedWordPaint = Paint().apply {
-            color = Color.parseColor("#1565C0")
-            alpha = 90
+            color = Color.parseColor("#D0BCFF") // M3 Primary light
+            alpha = 140
             isAntiAlias = true
         }
 
         private val handlePaint = Paint().apply {
-            color = Color.parseColor("#1565C0")
+            color = Color.parseColor("#6750A4") // M3 Primary
             isAntiAlias = true
         }
 
-        private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+        private val toolbarBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#F3EDF7") // M3 Surface Container
         }
 
-        private val copyBtnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF6750A4")
+        private val toolbarActionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#6750A4") // M3 Primary
         }
 
-        private val btnTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF1C1B1F")
-            textSize = 42f
+        private val toolbarTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#1D1B20") // M3 On Surface
+            textSize = 38f
             textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
         }
 
-        private val copyBtnTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 42f
-            textAlign = Paint.Align.CENTER
+        private val toolbarIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#6750A4")
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
         }
 
         // ── Pulse animation ───────────────────────────────────────────────────
@@ -419,22 +420,26 @@ class CopyTextOverlayManager(
             // 1. Draw the dim layer everywhere
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
 
-            // 2. Punch out holes for all detected text nodes
+            // 2. Punch out holes for all detected text nodes with padding
             detectedNodes.forEach { node ->
                 if (activeNode?.id == node.id) return@forEach
                 val localBounds = toLocal(node.bounds)
-                canvas.drawRoundRect(localBounds, 8f, 8f, clearPaint)
+                // Add 6dp padding for "professional" breathing room
+                localBounds.inset(-14f, -10f) 
+                canvas.drawRoundRect(localBounds, 12f, 12f, clearPaint)
             }
 
             // 3. Active node — draw word selection + handles + toolbar
             activeNode?.let { node ->
-                // Also punch out the active node's background so the text is clear
-                canvas.drawRoundRect(toLocal(node.bounds), 8f, 8f, clearPaint)
+                val nodeLocal = toLocal(node.bounds)
+                nodeLocal.inset(-14f, -10f)
+                canvas.drawRoundRect(nodeLocal, 12f, 12f, clearPaint)
 
                 node.words.forEach { word ->
                     if (word.index in selectionStart..selectionEnd) {
-                        // Highlight selected words
-                        canvas.drawRoundRect(toLocal(word.bounds), 8f, 8f, selectedWordPaint)
+                        val wBounds = toLocal(word.bounds)
+                        wBounds.inset(-2f, -2f) // Tight highlight
+                        canvas.drawRoundRect(wBounds, 8f, 8f, selectedWordPaint)
                     }
                 }
 
@@ -462,27 +467,27 @@ class CopyTextOverlayManager(
         }
 
         private fun drawFloatingToolbar(canvas: Canvas, anchor: RectF) {
-            val btnW    = 210
-            val btnH    = 88
-            val padding = 14
-            val gap     = 8
+            val btnW    = 190
+            val btnH    = 80
+            val padding = 12
+            val gap     = 10
             val labels  = listOf("Copy", "Select All", "Cancel")
 
             val totalW = labels.size * btnW + (labels.size - 1) * gap + padding * 2
             val totalH = btnH + padding * 2
 
             var left = anchor.centerX().toInt() - totalW / 2
-            var top  = anchor.top.toInt() - totalH - 18
-            if (top < 0)              top  = anchor.bottom.toInt() + 18
-            if (left < 0)             left = 8
-            if (left + totalW > width) left = width - totalW - 8
+            var top  = anchor.top.toInt() - totalH - 24
+            if (top < 0)              top  = anchor.bottom.toInt() + 24
+            if (left < 4)             left = 4
+            if (left + totalW > width - 4) left = width - totalW - 4
 
-            cardPaint.setShadowLayer(16f, 0f, 4f, Color.parseColor("#44000000"))
-            canvas.drawRoundRect(
-                RectF(left.toFloat(), top.toFloat(), (left + totalW).toFloat(), (top + totalH).toFloat()),
-                24f, 24f, cardPaint
-            )
-            cardPaint.clearShadowLayer()
+            val barRect = RectF(left.toFloat(), top.toFloat(), (left + totalW).toFloat(), (top + totalH).toFloat())
+            
+            // M3 Elevated look
+            toolbarBgPaint.setShadowLayer(16f, 0f, 6f, Color.parseColor("#33000000"))
+            canvas.drawRoundRect(barRect, 32f, 32f, toolbarBgPaint)
+            toolbarBgPaint.clearShadowLayer()
 
             val buttons = mutableListOf<ToolbarButton>()
             labels.forEachIndexed { idx, label ->
@@ -492,21 +497,14 @@ class CopyTextOverlayManager(
                 buttons.add(ToolbarButton(label, bRect))
 
                 val bRectF = RectF(bRect)
+                
+                // M3 Expressive Style - "Copy" gets a subtle pill background
                 if (label == "Copy") {
-                    canvas.drawRoundRect(bRectF, 12f, 12f, copyBtnPaint)
-                    canvas.drawText(
-                        label,
-                        bRectF.centerX(),
-                        bRectF.centerY() + copyBtnTextPaint.textSize / 3f,
-                        copyBtnTextPaint
-                    )
+                    val pillPaint = Paint(toolbarActionPaint).apply { alpha = 40 }
+                    canvas.drawRoundRect(bRectF, 40f, 40f, pillPaint)
+                    canvas.drawText(label, bRectF.centerX(), bRectF.centerY() + 14f, toolbarActionPaint.apply { style = Paint.Style.FILL; textSize = 38f; textAlign = Paint.Align.CENTER })
                 } else {
-                    canvas.drawText(
-                        label,
-                        bRectF.centerX(),
-                        bRectF.centerY() + btnTextPaint.textSize / 3f,
-                        btnTextPaint
-                    )
+                    canvas.drawText(label, bRectF.centerX(), bRectF.centerY() + 14f, toolbarTextPaint)
                 }
             }
             toolbarButtons = buttons
@@ -514,12 +512,27 @@ class CopyTextOverlayManager(
 
         // ── Touch handling ────────────────────────────────────────────────────
 
+        // ── Touch Handling (M3 Glide Selection) ───────────────────────────────
+
+        private var startSelectionIdx = -1
+
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val lx = event.x
             val ly = event.y
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    // Check toolbar first
+                    if (activeNode != null && selectionStart != -1) {
+                        for (btn in toolbarButtons) {
+                            if (btn.rect.contains(lx.toInt(), ly.toInt())) {
+                                handleToolbarAction(btn.label)
+                                return true
+                            }
+                        }
+                    }
+
+                    // Check for handles
                     activeNode?.let { node ->
                         if (selectionStart != -1) {
                             val startLocal = toLocal(node.words[selectionStart].bounds)
@@ -532,24 +545,48 @@ class CopyTextOverlayManager(
                             }
                         }
                     }
+
+                    // Check for new node entry or word selection start
+                    val nodeFound = detectedNodes.find { toLocal(it.bounds).contains(lx, ly) }
+                    if (nodeFound != null) {
+                        if (activeNode?.id != nodeFound.id) {
+                            enterNode(nodeFound)
+                        }
+                        // Start glide selection from nearest word
+                        val sx = toScreenX(lx)
+                        val sy = toScreenY(ly)
+                        startSelectionIdx = findNearestWord(sx, sy, nodeFound.words)
+                        selectionStart = startSelectionIdx
+                        selectionEnd   = startSelectionIdx
+                        invalidate()
+                        return true
+                    } else {
+                        exitNode()
+                    }
                 }
+
                 MotionEvent.ACTION_MOVE -> {
                     if (dragHandleType != 0) {
-                        // FIX #3: translate to screen coords for word-bounds comparison
                         updateSelectionFromDrag(toScreenX(lx), toScreenY(ly))
+                        invalidate()
+                        return true
+                    } else if (startSelectionIdx != -1 && activeNode != null) {
+                        // Glide selection update
+                        val nearest = findNearestWord(toScreenX(lx), toScreenY(ly), activeNode!!.words)
+                        selectionStart = startSelectionIdx.coerceAtMost(nearest)
+                        selectionEnd   = startSelectionIdx.coerceAtLeast(nearest)
                         invalidate()
                         return true
                     }
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (dragHandleType != 0) {
-                        dragHandleType = 0
-                        return true
-                    }
-                    gestureDetector.onTouchEvent(event)
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragHandleType = 0
+                    startSelectionIdx = -1
+                    invalidate()
                 }
             }
-            return gestureDetector.onTouchEvent(event)
+            return super.onTouchEvent(event)
         }
 
         private fun isPointNear(px: Float, py: Float, x: Float, y: Float): Boolean {
