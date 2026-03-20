@@ -64,13 +64,13 @@ class CopyTextOverlayManager(
     private var scanJob: Job? = null
     private var onDismissCallback: (() -> Unit)? = null
 
-    // Detected text nodes (screen coordinates)
+    // Detected text nodes and flattened words (sorted by reading order)
     private val detectedNodes = mutableListOf<TextNode>()
+    private val allWords = mutableListOf<Word>()
 
-    // Selection state
-    private var activeNode: TextNode? = null
-    private var selectionStart: Int = -1
-    private var selectionEnd: Int = -1
+    // Global selection state (indices into 'allWords')
+    private var globalSelectionStart: Int = -1
+    private var globalSelectionEnd: Int = -1
 
     // ── Public API ───────────────────────────────────────────────────────────
 
@@ -117,60 +117,30 @@ class CopyTextOverlayManager(
 
             val nodes = com.akslabs.circletosearch.ocr.TesseractEngine.extractText(context, screenshotBitmap)
             
-            android.util.Log.d("CopyText", "Live OCR scan complete: ${nodes.size} text nodes")
+            // Sort nodes by top coordinate, then left to ensure logical reading order
+            val sortedNodes = nodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
+            
+            android.util.Log.d("CopyText", "Live OCR scan complete: ${sortedNodes.size} text nodes")
+            
             detectedNodes.clear()
-            detectedNodes.addAll(nodes)
+            allWords.clear()
+            detectedNodes.addAll(sortedNodes)
+            
+            // Flatten words and update their global index
+            var globalIdx = 0
+            sortedNodes.forEach { node ->
+                node.words.forEach { word ->
+                    // We reuse the Word object but treat it globally
+                    allWords.add(word)
+                    globalIdx++
+                }
+            }
+            
             view.invalidate()
         }
     }
 
-    /**
-     * Split [fullText] into words and assign each word an estimated bounding box.
-     *
-     * FIX #4: We estimate bounds proportionally by character offset (same approach),
-     * but we CLAMP the result to the node's bounds so a word never appears outside
-     * its container regardless of whitespace or multi-line layout.
-     *
-     * NOTE: This is an approximation.  Android does not expose per-word bounds
-     * through AccessibilityNodeInfo.  For perfectly accurate word bounds the app
-     * under inspection would need to implement getTextLayout() — which most don't.
-     * The clamp ensures at minimum that every word highlight lands inside the node.
-     */
-    internal fun splitIntoWords(fullText: String, nodeBounds: Rect): List<Word> {
-        val words = mutableListOf<Word>()
-        val totalChars = fullText.length.toFloat()
-        if (totalChars == 0f) return words
 
-        val rawWords = fullText.split(Regex("\\s+"))
-        var cursor = 0
-
-        rawWords.forEachIndexed { wordIdx, wordText ->
-            if (wordText.isEmpty()) return@forEachIndexed
-            val start = fullText.indexOf(wordText, cursor)
-            if (start == -1) return@forEachIndexed
-            val end = start + wordText.length
-
-            val leftFraction  = start / totalChars
-            val rightFraction = end   / totalChars
-
-            val rawLeft   = nodeBounds.left  + nodeBounds.width()  * leftFraction
-            val rawRight  = nodeBounds.left  + nodeBounds.width()  * rightFraction
-            val rawTop    = nodeBounds.top.toFloat()
-            val rawBottom = nodeBounds.bottom.toFloat()
-
-            // Clamp to node bounds (FIX #4)
-            val bounds = RectF(
-                rawLeft.coerceIn(nodeBounds.left.toFloat(), nodeBounds.right.toFloat()),
-                rawTop.coerceIn(nodeBounds.top.toFloat(), nodeBounds.bottom.toFloat()),
-                rawRight.coerceIn(nodeBounds.left.toFloat(), nodeBounds.right.toFloat()),
-                rawBottom.coerceIn(nodeBounds.top.toFloat(), nodeBounds.bottom.toFloat())
-            )
-
-            words.add(Word(wordText, wordIdx, start, end, bounds))
-            cursor = end
-        }
-        return words
-    }
 
     // ── Dim + punch-out View ─────────────────────────────────────────────────
 
@@ -235,23 +205,13 @@ class CopyTextOverlayManager(
             isAntiAlias = false
         }
 
-        private val highlightPaint = Paint().apply {
-            color = Color.parseColor("#4FC3F7")
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-            isAntiAlias = true
-        }
 
-        private val highlightFillPaint = Paint().apply {
-            color = Color.WHITE
-            alpha = 20
-            style = Paint.Style.FILL
-            isAntiAlias = true
-        }
 
         private val selectedWordPaint = Paint().apply {
-            color = Color.parseColor("#D0BCFF") // M3 Primary light
-            alpha = 140
+            // Priority: M3 dynamic color if possible, fallback to a nice purple/blue accent
+            val colorRes = android.R.color.system_accent1_200 
+            color = try { context.getColor(colorRes) } catch(e: Exception) { Color.parseColor("#D0BCFF") }
+            alpha = 150
             isAntiAlias = true
         }
 
@@ -283,28 +243,10 @@ class CopyTextOverlayManager(
 
         // ── Pulse animation ───────────────────────────────────────────────────
 
-        private var pulseAlpha = 1.0f
-        private var pulseIncreasing = false
-        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
-
-        private val pulseRunnable = object : Runnable {
-            override fun run() {
-                if (pulseIncreasing) {
-                    pulseAlpha = (pulseAlpha + 0.02f).coerceAtMost(1.0f)
-                    if (pulseAlpha >= 1.0f) pulseIncreasing = false
-                } else {
-                    pulseAlpha = (pulseAlpha - 0.02f).coerceAtLeast(0.4f)
-                    if (pulseAlpha <= 0.4f) pulseIncreasing = true
-                }
-                invalidate()
-                handler.postDelayed(this, 30)
-            }
-        }
         init {
             background = null
             setWillNotDraw(false)
             setLayerType(LAYER_TYPE_SOFTWARE, null)
-            handler.post(pulseRunnable)
         }
 
         // ── Selection / drag state ────────────────────────────────────────────
@@ -312,97 +254,27 @@ class CopyTextOverlayManager(
         private var dragHandleType = 0  // 0=none, 1=start, 2=end
         private var toolbarButtons: List<ToolbarButton> = emptyList()
 
-        // ── Gesture detector ──────────────────────────────────────────────────
-
-        private val gestureDetector = GestureDetector(
-            context,
-            object : GestureDetector.SimpleOnGestureListener() {
-
-                override fun onLongPress(e: MotionEvent) {
-                    val lx = e.x
-                    val ly = e.y
-                    if (activeNode == null) {
-                        detectedNodes.find {
-                            toLocal(it.bounds).contains(lx, ly)
-                        }?.let { enterNode(it) }
-                    } else {
-                        // FIX #3: translate to screen coords before nearest-word search
-                        val sx = toScreenX(lx)
-                        val sy = toScreenY(ly)
-                        val idx = findNearestWord(sx, sy, activeNode!!.words)
-                        selectionStart = idx
-                        selectionEnd   = idx
-                        invalidate()
-                    }
-                }
-
-                override fun onSingleTapUp(e: MotionEvent): Boolean {
-                    val lx = e.x
-                    val ly = e.y
-
-                    // 1. Toolbar hit-test (toolbar rects are in LOCAL coords)
-                    if (activeNode != null && selectionStart != -1) {
-                        for (btn in toolbarButtons) {
-                            if (btn.rect.contains(lx.toInt(), ly.toInt())) {
-                                handleToolbarAction(btn.label)
-                                return true
-                            }
-                        }
-                    }
-
-                    // 2. Tap inside active node → word selection
-                    activeNode?.let { node ->
-                        if (toLocal(node.bounds).contains(lx, ly)) {
-                            // FIX #3: translate to screen for word-bounds comparison
-                            val sx = toScreenX(lx)
-                            val sy = toScreenY(ly)
-                            val wordIdx = findNearestWord(sx, sy, node.words)
-
-                            if (selectionStart == -1 ||
-                                (selectionStart == selectionEnd && wordIdx != selectionStart)
-                            ) {
-                                selectionStart = wordIdx
-                                selectionEnd   = wordIdx
-                            } else {
-                                if (wordIdx < selectionStart) selectionStart = wordIdx
-                                else if (wordIdx > selectionEnd) selectionEnd = wordIdx
-                            }
-                            invalidate()
-                            return true
-                        } else {
-                            exitNode()
-                            return true
-                        }
-                    }
-
-                    // 3. Tap a highlighted node → enter it
-                    detectedNodes.find {
-                        toLocal(it.bounds).contains(lx, ly)
-                    }?.let {
-                        enterNode(it)
-                        return true
-                    }
-
-                    // 4. Tap empty space → dismiss
-                    onBackPress()
-                    return true
-                }
-            }
-        )
 
         // ── Node entry / exit ─────────────────────────────────────────────────
 
         private fun enterNode(node: TextNode) {
-            activeNode     = node
-            selectionStart = 0
-            selectionEnd   = node.words.lastIndex
+            // Find global range for this node's words
+            val firstWord = node.words.firstOrNull() ?: return
+            val lastWord  = node.words.lastOrNull() ?: return
+            
+            val startIdx = allWords.indexOfFirst { it === firstWord }
+            val endIdx   = allWords.indexOfLast { it === lastWord }
+            
+            if (startIdx != -1 && endIdx != -1) {
+                globalSelectionStart = startIdx
+                globalSelectionEnd   = endIdx
+            }
             invalidate()
         }
 
         private fun exitNode() {
-            activeNode     = null
-            selectionStart = -1
-            selectionEnd   = -1
+            globalSelectionStart = -1
+            globalSelectionEnd   = -1
             invalidate()
         }
 
@@ -414,47 +286,61 @@ class CopyTextOverlayManager(
         }
 
         override fun onDraw(canvas: Canvas) {
-            // Use a layer to support PorterDuff.Mode.CLEAR
             val saveCount = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
 
-            // 1. Draw the dim layer everywhere
+            // 1. Dim layer
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
 
-            // 2. Punch out holes for all detected text nodes with padding
+            // 2. Punch out holes for all text blocks
             detectedNodes.forEach { node ->
-                if (activeNode?.id == node.id) return@forEach
                 val localBounds = toLocal(node.bounds)
-                // Add 6dp padding for "professional" breathing room
-                localBounds.inset(-14f, -10f) 
-                canvas.drawRoundRect(localBounds, 12f, 12f, clearPaint)
+                localBounds.inset(-16f, -12f) // More padding for professional look
+                canvas.drawRoundRect(localBounds, 16f, 16f, clearPaint)
             }
 
-            // 3. Active node — draw word selection + handles + toolbar
-            activeNode?.let { node ->
-                val nodeLocal = toLocal(node.bounds)
-                nodeLocal.inset(-14f, -10f)
-                canvas.drawRoundRect(nodeLocal, 12f, 12f, clearPaint)
-
-                node.words.forEach { word ->
-                    if (word.index in selectionStart..selectionEnd) {
-                        val wBounds = toLocal(word.bounds)
-                        wBounds.inset(-2f, -2f) // Tight highlight
-                        canvas.drawRoundRect(wBounds, 8f, 8f, selectedWordPaint)
-                    }
+            // 3. Draw Highlights (Merged into unified bars)
+            if (globalSelectionStart != -1 && globalSelectionEnd != -1) {
+                val start = globalSelectionStart.coerceAtMost(globalSelectionEnd)
+                val end   = globalSelectionStart.coerceAtLeast(globalSelectionEnd)
+                
+                // Group words by line (simplified: words in the same node that are close horizontally)
+                // Actually, Tesseract's TextNode usually represents a line or block.
+                // We'll group selected words by their Word.bounds.centerY() (rounded)
+                val selectedWords = (start..end).mapNotNull { allWords.getOrNull(it) }
+                
+                selectedWords.groupBy { (it.bounds.centerY() / 10).toInt() }.forEach { (_, wordsInLine) ->
+                    if (wordsInLine.isEmpty()) return@forEach
+                    
+                    // Create one unified Rect representing the entire highlight for this line segment
+                    val first = wordsInLine.minBy { it.bounds.left }
+                    val last  = wordsInLine.maxBy { it.bounds.right }
+                    
+                    val combinedRect = RectF(
+                        first.bounds.left,
+                        wordsInLine.minOf { it.bounds.top },
+                        last.bounds.right,
+                        wordsInLine.maxOf { it.bounds.bottom }
+                    )
+                    
+                    val localLineHighlight = toLocal(combinedRect)
+                    localLineHighlight.inset(-4f, -4f) // Slight overlap for smoothness
+                    canvas.drawRoundRect(localLineHighlight, 12f, 12f, selectedWordPaint)
                 }
 
-                if (selectionStart != -1 && selectionEnd != -1) {
-                    val startWord = node.words[selectionStart]
-                    val endWord   = node.words[selectionEnd]
+                // 4. Handles & Toolbar (Anchor to the overall selection)
+                val firstWord = allWords[start]
+                val lastWord  = allWords[end]
+                
+                val startLocal = toLocal(firstWord.bounds)
+                val endLocal   = toLocal(lastWord.bounds)
 
-                    val startLocal = toLocal(startWord.bounds)
-                    val endLocal   = toLocal(endWord.bounds)
+                drawHandle(canvas, startLocal.left,  startLocal.top,    isStart = true)
+                drawHandle(canvas, endLocal.right,   endLocal.bottom,   isStart = false)
 
-                    drawHandle(canvas, startLocal.left,  startLocal.top,    isStart = true)
-                    drawHandle(canvas, endLocal.right,   endLocal.bottom,   isStart = false)
-
-                    drawFloatingToolbar(canvas, toLocal(node.bounds))
-                }
+                // Toolbar anchored to the encompassing rect of the whole selection
+                val encompassing = RectF(firstWord.bounds)
+                selectedWords.forEach { encompassing.union(it.bounds) }
+                drawFloatingToolbar(canvas, toLocal(encompassing))
             }
 
             canvas.restoreToCount(saveCount)
@@ -467,26 +353,25 @@ class CopyTextOverlayManager(
         }
 
         private fun drawFloatingToolbar(canvas: Canvas, anchor: RectF) {
-            val btnW    = 190
+            val btnW    = 170
             val btnH    = 80
             val padding = 12
-            val gap     = 10
-            val labels  = listOf("Copy", "Select All", "Cancel")
+            val gap     = 8
+            val labels  = listOf("Copy", "Share", "Select All", "Cancel")
 
             val totalW = labels.size * btnW + (labels.size - 1) * gap + padding * 2
             val totalH = btnH + padding * 2
 
             var left = anchor.centerX().toInt() - totalW / 2
-            var top  = anchor.top.toInt() - totalH - 24
-            if (top < 0)              top  = anchor.bottom.toInt() + 24
-            if (left < 4)             left = 4
-            if (left + totalW > width - 4) left = width - totalW - 4
+            var top  = anchor.top.toInt() - totalH - 32
+            if (top < 0)              top  = anchor.bottom.toInt() + 32
+            if (left < 10)            left = 10
+            if (left + totalW > width - 10) left = width - totalW - 10
 
             val barRect = RectF(left.toFloat(), top.toFloat(), (left + totalW).toFloat(), (top + totalH).toFloat())
             
-            // M3 Elevated look
-            toolbarBgPaint.setShadowLayer(16f, 0f, 6f, Color.parseColor("#33000000"))
-            canvas.drawRoundRect(barRect, 32f, 32f, toolbarBgPaint)
+            toolbarBgPaint.setShadowLayer(20f, 0f, 8f, Color.parseColor("#44000000"))
+            canvas.drawRoundRect(barRect, 40f, 40f, toolbarBgPaint)
             toolbarBgPaint.clearShadowLayer()
 
             val buttons = mutableListOf<ToolbarButton>()
@@ -497,22 +382,18 @@ class CopyTextOverlayManager(
                 buttons.add(ToolbarButton(label, bRect))
 
                 val bRectF = RectF(bRect)
-                
-                // M3 Expressive Style - "Copy" gets a subtle pill background
-                if (label == "Copy") {
-                    val pillPaint = Paint(toolbarActionPaint).apply { alpha = 40 }
+                if (label == "Copy" || label == "Share") {
+                    val pillPaint = Paint(toolbarActionPaint).apply { alpha = 35 }
                     canvas.drawRoundRect(bRectF, 40f, 40f, pillPaint)
-                    canvas.drawText(label, bRectF.centerX(), bRectF.centerY() + 14f, toolbarActionPaint.apply { style = Paint.Style.FILL; textSize = 38f; textAlign = Paint.Align.CENTER })
+                    canvas.drawText(label, bRectF.centerX(), bRectF.centerY() + 14f, toolbarActionPaint.apply { style = Paint.Style.FILL; textSize = 34f })
                 } else {
-                    canvas.drawText(label, bRectF.centerX(), bRectF.centerY() + 14f, toolbarTextPaint)
+                    canvas.drawText(label, bRectF.centerX(), bRectF.centerY() + 14f, toolbarTextPaint.apply { textSize = 34f })
                 }
             }
             toolbarButtons = buttons
         }
 
         // ── Touch handling ────────────────────────────────────────────────────
-
-        // ── Touch Handling (M3 Glide Selection) ───────────────────────────────
 
         private var startSelectionIdx = -1
 
@@ -522,42 +403,39 @@ class CopyTextOverlayManager(
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Check toolbar first
-                    if (activeNode != null && selectionStart != -1) {
-                        for (btn in toolbarButtons) {
-                            if (btn.rect.contains(lx.toInt(), ly.toInt())) {
-                                handleToolbarAction(btn.label)
-                                return true
-                            }
+                    // 1. Check toolbar FIRST with 24px extra hit-padding for reliability
+                    for (btn in toolbarButtons) {
+                        val touchRect = Rect(btn.rect).apply { inset(-24, -24) }
+                        if (touchRect.contains(lx.toInt(), ly.toInt())) {
+                            handleToolbarAction(btn.label)
+                            return true
                         }
                     }
 
-                    // Check for handles
-                    activeNode?.let { node ->
-                        if (selectionStart != -1) {
-                            val startLocal = toLocal(node.words[selectionStart].bounds)
-                            val endLocal   = toLocal(node.words[selectionEnd].bounds)
-                            if (isPointNear(lx, ly, startLocal.left, startLocal.top)) {
-                                dragHandleType = 1; return true
-                            }
-                            if (isPointNear(lx, ly, endLocal.right, endLocal.bottom)) {
-                                dragHandleType = 2; return true
-                            }
+                    // 2. Check for handle drag
+                    if (globalSelectionStart != -1) {
+                        val start = globalSelectionStart.coerceAtMost(globalSelectionEnd)
+                        val end   = globalSelectionStart.coerceAtLeast(globalSelectionEnd)
+                        val startLocal = toLocal(allWords[start].bounds)
+                        val endLocal   = toLocal(allWords[end].bounds)
+                        
+                        if (isPointNear(lx, ly, startLocal.left, startLocal.top)) {
+                            dragHandleType = 1; return true
+                        }
+                        if (isPointNear(lx, ly, endLocal.right, endLocal.bottom)) {
+                            dragHandleType = 2; return true
                         }
                     }
 
-                    // Check for new node entry or word selection start
-                    val nodeFound = detectedNodes.find { toLocal(it.bounds).contains(lx, ly) }
-                    if (nodeFound != null) {
-                        if (activeNode?.id != nodeFound.id) {
-                            enterNode(nodeFound)
-                        }
-                        // Start glide selection from nearest word
-                        val sx = toScreenX(lx)
-                        val sy = toScreenY(ly)
-                        startSelectionIdx = findNearestWord(sx, sy, nodeFound.words)
-                        selectionStart = startSelectionIdx
-                        selectionEnd   = startSelectionIdx
+                    // 3. Glide Select across ALL nodes
+                    val sx = toScreenX(lx)
+                    val sy = toScreenY(ly)
+                    val nearest = findNearestWordGlobal(sx, sy)
+                    if (nearest != -1) {
+                        globalSelectionStart = nearest
+                        globalSelectionEnd   = nearest
+                        startSelectionIdx    = nearest
+                        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                         invalidate()
                         return true
                     } else {
@@ -566,17 +444,24 @@ class CopyTextOverlayManager(
                 }
 
                 MotionEvent.ACTION_MOVE -> {
+                    val sx = toScreenX(lx)
+                    val sy = toScreenY(ly)
+                    
                     if (dragHandleType != 0) {
-                        updateSelectionFromDrag(toScreenX(lx), toScreenY(ly))
-                        invalidate()
+                        val nearest = findNearestWordGlobal(sx, sy)
+                        if (nearest != -1) {
+                            if (dragHandleType == 1) globalSelectionStart = nearest
+                            else                     globalSelectionEnd   = nearest
+                            invalidate()
+                        }
                         return true
-                    } else if (startSelectionIdx != -1 && activeNode != null) {
-                        // Glide selection update
-                        val nearest = findNearestWord(toScreenX(lx), toScreenY(ly), activeNode!!.words)
-                        selectionStart = startSelectionIdx.coerceAtMost(nearest)
-                        selectionEnd   = startSelectionIdx.coerceAtLeast(nearest)
-                        invalidate()
-                        return true
+                    } else if (startSelectionIdx != -1) {
+                        val nearest = findNearestWordGlobal(sx, sy)
+                        if (nearest != -1) {
+                            globalSelectionEnd = nearest
+                            invalidate()
+                            return true
+                        }
                     }
                 }
 
@@ -589,74 +474,66 @@ class CopyTextOverlayManager(
             return super.onTouchEvent(event)
         }
 
+        private fun findNearestWordGlobal(sx: Float, sy: Float): Int {
+            var minDist = Float.MAX_VALUE
+            var nearest = -1
+            allWords.forEachIndexed { idx, word ->
+                val dx = sx - word.bounds.centerX()
+                val dy = sy - word.bounds.centerY()
+                val d  = dx * dx + dy * dy
+                // Only consider it a "hit" if it's within a reasonable distance of the block
+                if (d < minDist) {
+                    minDist = d
+                    nearest = idx
+                }
+            }
+            // If the nearest word is too far (e.g. empty space), return -1
+            return if (minDist < 600 * 600) nearest else -1
+        }
+
         private fun isPointNear(px: Float, py: Float, x: Float, y: Float): Boolean {
             val dx = px - x
             val dy = py - y
             return dx * dx + dy * dy < 80 * 80
         }
 
-        /**
-         * [screenX] / [screenY] are already in screen coordinates.
-         * word.bounds is also in screen coordinates, so no conversion needed here.
-         */
-        private fun updateSelectionFromDrag(screenX: Float, screenY: Float) {
-            val node = activeNode ?: return
-            val nearestIdx = findNearestWord(screenX, screenY, node.words)
-            val oldStart = selectionStart
-            val oldEnd   = selectionEnd
 
-            if (dragHandleType == 1) {
-                selectionStart = nearestIdx.coerceAtMost(selectionEnd)
-            } else {
-                selectionEnd = nearestIdx.coerceAtLeast(selectionStart)
-            }
-
-            if (oldStart != selectionStart || oldEnd != selectionEnd) {
-                performHapticFeedback(android.view.HapticFeedbackConstants.TEXT_HANDLE_MOVE)
-            }
-        }
-
-        /**
-         * Find the word whose centre is nearest to ([screenX], [screenY]).
-         *
-         * FIX #3: Both [screenX]/[screenY] AND word.bounds are in screen coordinates.
-         * The original used local touch coords vs screen-space word bounds.
-         */
-        private fun findNearestWord(screenX: Float, screenY: Float, words: List<Word>): Int {
-            var minDist = Float.MAX_VALUE
-            var nearest = 0
-            words.forEachIndexed { idx, word ->
-                val dx = screenX - word.bounds.centerX()
-                val dy = screenY - word.bounds.centerY()
-                val d  = dx * dx + dy * dy
-                if (d < minDist) { minDist = d; nearest = idx }
-            }
-            return nearest
-        }
 
         // ── Toolbar action handler ────────────────────────────────────────────
 
         private fun handleToolbarAction(label: String) {
-            val node = activeNode ?: return
+            val start = globalSelectionStart.coerceAtMost(globalSelectionEnd)
+            val end   = globalSelectionStart.coerceAtLeast(globalSelectionEnd)
+            if (start == -1) return
+
+            val selectedText = (start..end).mapNotNull { allWords.getOrNull(it) }.joinToString(" ") { it.text }
+
             when (label) {
                 "Copy" -> {
-                    if (selectionStart != -1 && selectionEnd != -1) {
-                        val text = node.words
-                            .filter { it.index in selectionStart..selectionEnd }
-                            .joinToString(" ") { it.text }
-                        val clipboard =
-                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Copied Text", text))
-                        Toast.makeText(context, "Text copied ✓", Toast.LENGTH_SHORT).show()
-                        dismiss()
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Copied Text", selectedText))
+                    Toast.makeText(context, "Text copied ✓", Toast.LENGTH_SHORT).show()
+                    dismiss()
+                }
+                "Share" -> {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, selectedText)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Share text via").apply {
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                    dismiss()
                 }
                 "Select All" -> {
-                    selectionStart = 0
-                    selectionEnd   = node.words.lastIndex
+                    globalSelectionStart = 0
+                    globalSelectionEnd   = allWords.lastIndex
                     invalidate()
                 }
-                "Cancel" -> exitNode()
+                "Cancel" -> {
+                    exitNode()
+                }
             }
         }
 
