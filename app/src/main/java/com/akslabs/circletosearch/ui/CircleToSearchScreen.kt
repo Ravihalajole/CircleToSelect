@@ -77,6 +77,7 @@ import androidx.compose.material.icons.filled.BorderOuter
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
@@ -230,6 +231,10 @@ fun CircleToSearchScreen(
     // Resizing state
     var isResizing by remember { mutableStateOf(false) }
     var activeHandle by remember { mutableStateOf<String?>(null) } // "tl", "tr", "bl", "br"
+    
+    // QR Scanner state
+    var showQrSheet by remember { mutableStateOf(false) }
+    var qrScanBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     
     LaunchedEffect(Unit) {
         if (uiPreferences.isShowFriendlyMessages()) {
@@ -955,6 +960,7 @@ fun CircleToSearchScreen(
 
                                         if (rect.width() > 10 && rect.height() > 10) {
                                             selectionRect = rect
+                                            currentPathPoints.clear() // Hide the drawn circle
                                             if (screenshot != null) {
                                                 selectedBitmap = ImageUtils.cropBitmap(screenshot!!, rect)
                                             }
@@ -1465,6 +1471,12 @@ fun CircleToSearchScreen(
                                 isCopyTextTriggered = true
                             }
 
+                            // QR Scan
+                            BottomBarButton("Scan QR", { Icon(Icons.Default.QrCode, null) }) {
+                                qrScanBitmap = selectedBitmap ?: screenshot
+                                showQrSheet = true
+                            }
+
                             // Fullscreen
                             BottomBarButton("Fullscreen", { Icon(Icons.Default.Fullscreen, null) }) {
                                 if (screenshot != null) {
@@ -1614,6 +1626,34 @@ fun CircleToSearchScreen(
                 }
             }
         
+        // QR Code Result Sheet
+        if (showQrSheet) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
+                    .zIndex(3000f),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Column {
+                    QrCodeResultSheet(
+                        context = context,
+                        bitmap = qrScanBitmap,
+                        onDismiss = { showQrSheet = false }
+                    )
+                    // Dismiss tap area
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clickable { showQrSheet = false }
+                    )
+                }
+            }
+        }
+
         if (showSupportSheet) {
             com.akslabs.circletosearch.SupportSheet(
                 sheetState = supportSheetState,
