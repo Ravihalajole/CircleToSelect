@@ -855,7 +855,7 @@ fun CircleToSearchScreen(
                                 color = Color.Transparent,
                                 topLeft = holeRect.topLeft,
                                 size = holeRect.size,
-                                cornerRadius = CornerRadius(32f),
+                                cornerRadius = CornerRadius(48f),
                                 blendMode = androidx.compose.ui.graphics.BlendMode.Clear
                             )
                         }
@@ -978,8 +978,8 @@ fun CircleToSearchScreen(
                         
                         val width = right - left
                         val height = bottom - top
-                        val cornerRadius = 64f // Increased radius for rounder look
-                        val armLength = min(width, height) * 0.2f // Length of the straight part
+                        val cornerRadius = 48f // Slightly smaller radius
+                        val armLength = min(width, height) * 0.15f // Slightly shorter arms
 
                         // Top Left
                         val tlPath = Path().apply {
@@ -1033,10 +1033,9 @@ fun CircleToSearchScreen(
                         val bracketAlpha = progress
                         val bracketStroke = Stroke(width = 12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                         
-                        // Draw Brackets with Glow
+                        // Draw Brackets (Solid White)
                         listOf(tlPath, trPath, brPath, blPath).forEach { p ->
                             drawPath(p, Color.White, style = bracketStroke, alpha = bracketAlpha)
-                            drawPath(p, Brush.linearGradient(OverlayGradientColors), style = Stroke(width = 20f, cap = StrokeCap.Round), alpha = bracketAlpha * 0.5f)
                         }
                         
                         // Optional: Flash effect inside
@@ -1044,7 +1043,7 @@ fun CircleToSearchScreen(
                             color = Color.White,
                             topLeft = Offset(left, top),
                             size = Size(width, height),
-                            cornerRadius = CornerRadius(32f),
+                            cornerRadius = CornerRadius(48f),
                             style = Stroke(width = 4f),
                             alpha = (1f - progress) * 0.5f
                          )
@@ -1078,18 +1077,21 @@ fun CircleToSearchScreen(
                             onClick = {
                                 if (selectedBitmap != null) {
                                     scope.launch {
-                                        try {
-                                            val path = ImageUtils.saveBitmap(context, selectedBitmap!!)
-                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.akslabs.circletosearch.fileprovider", java.io.File(path))
+                                        try {                                             val fileName = "selection_${java.util.UUID.randomUUID()}.png"
+                                            val path = ImageUtils.saveBitmap(context, selectedBitmap!!, fileName)
+                                            val file = java.io.File(path)
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.akslabs.circletosearch.fileprovider", file)
                                             val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply { 
-                                                type = "image/*"
+                                                type = "image/png"
                                                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                clipData = android.content.ClipData.newRawUri("Selection", uri)
                                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                             }
                                             context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Selection").apply { 
                                                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) 
                                             })
+
                                         } catch (e: Exception) {
                                             android.util.Log.e("CircleToSearch", "Failed to share selection", e)
                                         }
@@ -1462,9 +1464,17 @@ fun CircleToSearchScreen(
                                 if (screenshot != null) {
                                     scope.launch {
                                         try {
-                                            val path = ImageUtils.saveBitmap(context, selectedBitmap ?: screenshot)
-                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.akslabs.circletosearch.fileprovider", java.io.File(path))
-                                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "image/*"; putExtra(android.content.Intent.EXTRA_STREAM, uri); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION); addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                            val fileName = "share_${java.util.UUID.randomUUID()}.png"
+                                            val path = ImageUtils.saveBitmap(context, selectedBitmap ?: screenshot, fileName)
+                                            val file = java.io.File(path)
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.akslabs.circletosearch.fileprovider", file)
+                                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply { 
+                                                type = "image/png"
+                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                clipData = android.content.ClipData.newRawUri("Selection", uri)
+                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) 
+                                            }
                                             context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Image").apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
                                         } catch (e: Exception) {}
                                     }

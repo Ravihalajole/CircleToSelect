@@ -29,8 +29,8 @@ import java.io.FileOutputStream
 object ImageUtils {
     private const val SCREENSHOT_FILENAME = "screenshot.png"
 
-    fun saveBitmap(context: Context, bitmap: Bitmap): String {
-        val file = File(context.cacheDir, SCREENSHOT_FILENAME)
+    fun saveBitmap(context: Context, bitmap: Bitmap, fileName: String = SCREENSHOT_FILENAME): String {
+        val file = File(context.cacheDir, fileName)
         FileOutputStream(file).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
