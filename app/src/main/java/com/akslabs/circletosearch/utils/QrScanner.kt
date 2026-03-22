@@ -1,13 +1,17 @@
 package com.akslabs.circletosearch.utils
 
 import android.graphics.Bitmap
+import android.graphics.RectF
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
 import com.google.zxing.MultiFormatReader
+import com.google.zxing.NotFoundException
 import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.Result
+import com.google.zxing.ResultPoint
 import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.multi.GenericMultipleBarcodeReader
 
 // Sealed class representing all supported QR / barcode result types
 sealed class QrResult {
@@ -20,9 +24,32 @@ sealed class QrResult {
     data class PlainText(val text: String) : QrResult()
 }
 
+/** Wraps a parsed QR result with its bounding box in bitmap-pixel coordinates */
+data class QrResultWithBounds(
+    val result: QrResult,
+    val rawText: String,
+    /** Bounds in bitmap pixel coords (may be null if position unavailable) */
+    val bounds: RectF?
+)
+
 object QrScanner {
 
-    fun scanBitmap(bitmap: Bitmap): QrResult? {
+    private val HINTS = mapOf(
+        DecodeHintType.TRY_HARDER to true,
+        DecodeHintType.POSSIBLE_FORMATS to listOf(
+            BarcodeFormat.QR_CODE,
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.DATA_MATRIX,
+            BarcodeFormat.PDF_417,
+            BarcodeFormat.CODE_128,
+            BarcodeFormat.CODE_39
+        )
+    )
+
+    /** Scan for all barcodes / QR codes in the given bitmap. Returns empty list when none found. */
+    fun scanBitmapAll(bitmap: Bitmap): List<QrResultWithBounds> {
         return try {
             val width = bitmap.width
             val height = bitmap.height
@@ -32,46 +59,50 @@ object QrScanner {
             val source = RGBLuminanceSource(width, height, pixels)
             val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
 
-            val hints = mapOf(
-                DecodeHintType.TRY_HARDER to true,
-                DecodeHintType.POSSIBLE_FORMATS to listOf(
-                    BarcodeFormat.QR_CODE,
-                    BarcodeFormat.EAN_13,
-                    BarcodeFormat.EAN_8,
-                    BarcodeFormat.UPC_A,
-                    BarcodeFormat.DATA_MATRIX,
-                    BarcodeFormat.PDF_417
-                )
-            )
+            val multiReader = GenericMultipleBarcodeReader(MultiFormatReader())
+            val rawResults: Array<Result> = try {
+                multiReader.decodeMultiple(binaryBitmap, HINTS)
+            } catch (e: NotFoundException) {
+                emptyArray()
+            }
 
-            val reader = MultiFormatReader()
-            val result: Result = reader.decode(binaryBitmap, hints)
-            parseResult(result.text)
+            rawResults.mapNotNull { raw ->
+                try {
+                    val bounds = computeBounds(raw.resultPoints)
+                    QrResultWithBounds(parseResult(raw.text), raw.text, bounds)
+                } catch (e: Exception) { null }
+            }
         } catch (e: Exception) {
-            null
+            emptyList()
         }
     }
 
-    private fun parseResult(text: String): QrResult {
+    /** Compatibility single-result scan (kept for backward compat). */
+    fun scanBitmap(bitmap: Bitmap): QrResult? = scanBitmapAll(bitmap).firstOrNull()?.result
+
+    private fun computeBounds(points: Array<ResultPoint>?): RectF? {
+        if (points.isNullOrEmpty()) return null
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+        var maxX = Float.MIN_VALUE; var maxY = Float.MIN_VALUE
+        for (p in points) {
+            if (p == null) continue
+            if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x
+            if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y
+        }
+        return if (minX == Float.MAX_VALUE) null else RectF(minX - 20f, minY - 20f, maxX + 20f, maxY + 20f)
+    }
+
+    fun parseResult(text: String): QrResult {
         return when {
-            // URL
             text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true) -> {
                 val display = text.removePrefix("http://").removePrefix("https://").trimEnd('/')
                 QrResult.Url(text, display)
             }
-            // WiFi: WIFI:S:SSID;T:WPA;P:password;;
             text.startsWith("WIFI:", ignoreCase = true) -> parseWifi(text)
-            // Tel
-            text.startsWith("tel:", ignoreCase = true) -> {
-                QrResult.Phone(text.removePrefix("tel:").trim())
-            }
-            // vCard
+            text.startsWith("tel:", ignoreCase = true) -> QrResult.Phone(text.removePrefix("tel:").trim())
             text.startsWith("BEGIN:VCARD", ignoreCase = true) -> parseVCard(text)
-            // Geo
             text.startsWith("geo:", ignoreCase = true) -> parseGeo(text)
-            // Barcode-only (all digits, length 8-14)
             text.matches(Regex("\\d{8,14}")) -> QrResult.Product(text)
-            // Plain text fallback
             else -> QrResult.PlainText(text)
         }
     }
@@ -93,11 +124,7 @@ object QrScanner {
     private fun parseGeo(text: String): QrResult {
         return try {
             val coords = text.removePrefix("geo:").split(",")
-            val lat = coords[0].toDouble()
-            val lng = coords[1].split("?")[0].toDouble()
-            QrResult.GeoPoint(lat, lng)
-        } catch (e: Exception) {
-            QrResult.PlainText(text)
-        }
+            QrResult.GeoPoint(coords[0].toDouble(), coords[1].split("?")[0].toDouble())
+        } catch (e: Exception) { QrResult.PlainText(text) }
     }
 }
