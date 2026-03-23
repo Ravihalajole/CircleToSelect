@@ -60,41 +60,53 @@ object QrScanner {
             val w = bitmap.width
             val h = bitmap.height
 
-            // 1. FULL SCAN
-            val fullPixels = IntArray(w * h)
-            bitmap.getPixels(fullPixels, 0, w, 0, 0, w, h)
-            processResults(scanLuminanceSource(RGBLuminanceSource(w, h, fullPixels)), 0, 0)
-            android.util.Log.d("CircleToSearch", "QrScanner: Full scan found ${allResults.size} codes")
+            // Load pixels once
+            val pixels = IntArray(w * h)
+            bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+            val baseSource = RGBLuminanceSource(w, h, pixels)
 
-            // 2. TILED SCAN (2x2 Overlapping Quadrants)
-            // Using ~65% size to ensure 15% middle overlap
-            val tileW = (w * 0.65f).toInt()
-            val tileH = (h * 0.65f).toInt()
+            // Define all tiles for 3 levels of zoom
+            val tileRegions = mutableListOf<android.graphics.Rect>()
+            
+            // Level 1: Full-screen (1 tile)
+            tileRegions.add(android.graphics.Rect(0, 0, w, h))
 
-            val tiles = listOf(
-                android.graphics.Rect(0, 0, tileW, tileH),                 // Top Left
-                android.graphics.Rect(w - tileW, 0, w, tileH),             // Top Right
-                android.graphics.Rect(0, h - tileH, tileW, h),             // Bottom Left
-                android.graphics.Rect(w - tileW, h - tileH, w, h)          // Bottom Right
-            )
+            // Level 2: 2x2 grid (4 tiles, ~65% size for overlap)
+            val l2W = (w * 0.65f).toInt()
+            val l2H = (h * 0.65f).toInt()
+            tileRegions.add(android.graphics.Rect(0, 0, l2W, l2H))
+            tileRegions.add(android.graphics.Rect(w - l2W, 0, w, l2H))
+            tileRegions.add(android.graphics.Rect(0, h - l2H, l2W, h))
+            tileRegions.add(android.graphics.Rect(w - l2W, h - l2H, w, h))
 
-            tiles.forEachIndexed { index, rect ->
-                try {
-                    val tw = rect.width()
-                    val th = rect.height()
-                    val tilePixels = IntArray(tw * th)
-                    bitmap.getPixels(tilePixels, 0, tw, rect.left, rect.top, tw, th)
-                    
-                    val results = scanLuminanceSource(RGBLuminanceSource(tw, th, tilePixels))
-                    val beforeCount = allResults.size
-                    processResults(results, rect.left, rect.top)
-                    android.util.Log.d("CircleToSearch", "QrScanner: Tile $index found ${allResults.size - beforeCount} NEW codes")
-                } catch (e: Exception) {
-                    android.util.Log.e("CircleToSearch", "QrScanner: Tile $index failed", e)
+            // Level 3: 3x3 grid (9 tiles, ~42% size for overlap)
+            val l3W = (w * 0.42f).toInt()
+            val l3H = (h * 0.42f).toInt()
+            val xOffs = listOf(0, (w - l3W) / 2, w - l3W)
+            val yOffs = listOf(0, (h - l3H) / 2, h - l3H)
+            for (yo in yOffs) {
+                for (xo in xOffs) {
+                    tileRegions.add(android.graphics.Rect(xo, yo, xo + l3W, yo + l3H))
                 }
             }
 
-            android.util.Log.d("CircleToSearch", "QrScanner: Tiled scan COMPLETE. Total codes: ${allResults.size}")
+            // Execute all 14 passes
+            tileRegions.forEachIndexed { index, rect ->
+                try {
+                    val subSource = baseSource.crop(rect.left, rect.top, rect.width(), rect.height())
+                    val results = scanLuminanceSource(subSource)
+                    val before = allResults.size
+                    processResults(results, rect.left, rect.top)
+                    
+                    if (allResults.size > before) {
+                        android.util.Log.d("CircleToSearch", "QrScanner: Pass $index (Rect: $rect) found ${allResults.size - before} NEW codes")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("CircleToSearch", "QrScanner: Pass $index failed", e)
+                }
+            }
+
+            android.util.Log.d("CircleToSearch", "QrScanner: Multi-res scan COMPLETE. Total codes: ${allResults.size}")
             return allResults
         } catch (e: Exception) {
             android.util.Log.e("CircleToSearch", "QrScanner: Fatal error in scanBitmapAll", e)
