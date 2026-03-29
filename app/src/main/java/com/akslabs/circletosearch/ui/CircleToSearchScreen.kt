@@ -89,6 +89,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -247,6 +251,11 @@ fun CircleToSearchScreen(
     var qrScanBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var detectedQrCodes by remember { mutableStateOf<List<QrResultWithBounds>>(emptyList()) }
     var selectedQrResult by remember { mutableStateOf<QrResultWithBounds?>(null) }
+    
+    // Phase 44: Smart Entity Extractor
+    var isEntityExtractMode by remember { mutableStateOf(false) }
+    var detectedEntities by remember { mutableStateOf<List<SmartEntity>>(emptyList()) }
+    var isExtractingEntities by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         if (uiPreferences.isShowFriendlyMessages()) {
@@ -1533,11 +1542,41 @@ fun CircleToSearchScreen(
                                 )
                             }
 
-                            // Telegram
-                            BottomBarButton("Telegram", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.telegram), null, modifier = Modifier.size(22.dp)) }) {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/Aks_Labs"))
-                                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                try { context.startActivity(intent) } catch(e:Exception){}
+                            // Phase 44: Smart Entity Extractor
+                            BottomBarButton("Smart Extract", { Icon(Icons.Default.Search, null, modifier = Modifier.size(22.dp)) }) {
+                                isEntityExtractMode = true
+                                if (detectedEntities.isEmpty() && !isExtractingEntities) {
+                                    isExtractingEntities = true
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val bmp = screenshot ?: return@launch
+                                        val textNodes = com.akslabs.circletosearch.ocr.TesseractEngine.extractText(context, bmp)
+                                        val entities = mutableListOf<SmartEntity>()
+                                        
+                                        val urlRegex = android.util.Patterns.WEB_URL.toRegex()
+                                        val emailRegex = android.util.Patterns.EMAIL_ADDRESS.toRegex()
+                                        val phoneRegex = Regex("""[\+\d\s\-\(\)]{7,15}""")
+                                        val upiRegex = Regex("""[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}""")
+
+                                        textNodes.forEach { node ->
+                                            node.words.forEach { word ->
+                                                val txt = word.text.trim()
+                                                if (emailRegex.matches(txt)) {
+                                                    entities.add(SmartEntity.Email(txt, word.bounds))
+                                                } else if (upiRegex.matches(txt)) {
+                                                    entities.add(SmartEntity.Upi(txt, word.bounds))
+                                                } else if (urlRegex.matches(txt)) {
+                                                    entities.add(SmartEntity.Url(txt, word.bounds))
+                                                } else if (phoneRegex.matches(txt) && txt.count { it.isDigit() } >= 7) {
+                                                    entities.add(SmartEntity.Phone(txt, word.bounds))
+                                                }
+                                            }
+                                        }
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            detectedEntities = entities
+                                            isExtractingEntities = false
+                                        }
+                                    }
+                                }
                             }
 
                             // Donate
@@ -1784,6 +1823,97 @@ fun CircleToSearchScreen(
             }
         }
 
+        // --- Phase 44: Smart Entity Extractor Overlay Chips ---
+        if (isEntityExtractMode && screenshot != null && !isCopyMode) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize().zIndex(2600f)) {
+                val screenWidth = maxWidth
+                val screenHeight = maxHeight
+                val bitmapWidth = screenshot.width.toFloat()
+                val bitmapHeight = screenshot.height.toFloat()
+
+                // Dimmed background
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).pointerInput(Unit) { detectTapGestures { isEntityExtractMode = false } }
+                )
+
+                if (isExtractingEntities) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.height(16.dp))
+                            Text("Extracting links & info...", color = Color.White)
+                        }
+                    }
+                }
+
+                detectedEntities.forEach { entity ->
+                    val chipX = (entity.bounds.centerX() / bitmapWidth) * screenWidth.value
+                    val chipY = (entity.bounds.centerY() / bitmapHeight) * screenHeight.value
+
+                    // Main Chip Icon
+                    Box(
+                        modifier = Modifier
+                            .offset(x = chipX.dp - 24.dp, y = chipY.dp - 24.dp)
+                            .size(48.dp)
+                            .shadow(6.dp, CircleShape)
+                            .background(Color.White, CircleShape)
+                            .border(1.5.dp, entity.sourceColor, CircleShape)
+                            .clickable {
+                                try {
+                                    val intent = when(entity) {
+                                        is SmartEntity.Url -> android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(if (!entity.text.startsWith("http")) "http://${entity.text}" else entity.text))
+                                        is SmartEntity.Email -> android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:${entity.text}"))
+                                        is SmartEntity.Phone -> android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${entity.text}"))
+                                        is SmartEntity.Upi -> android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("upi://pay?pa=${entity.text}"))
+                                    }
+                                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(intent)
+                                    isEntityExtractMode = false
+                                } catch (e: Exception) {}
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(entity.icon, null, tint = entity.sourceColor, modifier = Modifier.size(24.dp))
+                    }
+                    
+                    // Label Chip
+                    Surface(
+                        modifier = Modifier
+                            .offset(x = chipX.dp + 28.dp, y = chipY.dp - 12.dp)
+                            .clickable {
+                                try {
+                                    val intent = when(entity) {
+                                        is SmartEntity.Url -> android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(if (!entity.text.startsWith("http")) "http://${entity.text}" else entity.text))
+                                        is SmartEntity.Email -> android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:${entity.text}"))
+                                        is SmartEntity.Phone -> android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:${entity.text}"))
+                                        is SmartEntity.Upi -> android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("upi://pay?pa=${entity.text}"))
+                                    }
+                                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(intent)
+                                    isEntityExtractMode = false
+                                } catch (e: Exception) {}
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White.copy(alpha = 0.95f),
+                        tonalElevation = 4.dp,
+                        shadowElevation = 4.dp,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, entity.sourceColor.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = entity.text,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = entity.sourceColor,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
         // QR Code Result Sheet
         if (showQrSheet) {
             // Full-screen invisible overlay to catch "click outside"
@@ -1853,6 +1983,14 @@ fun CircleToSearchScreen(
     }
 }
 }
+}
+
+// --- Phase 44: Smart Entity Extractor Models ---
+sealed class SmartEntity(val text: String, val bounds: android.graphics.RectF, val typeName: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val sourceColor: Color) {
+    class Url(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Link", Icons.Default.Link, Color(0xFF1A73E8))
+    class Email(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Email", Icons.Default.Email, Color(0xFFE53935))
+    class Phone(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Phone", Icons.Default.Phone, Color(0xFF43A047))
+    class Upi(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "UPI", Icons.Default.Person, Color(0xFF8E24AA))
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
