@@ -1566,7 +1566,7 @@ fun CircleToSearchScreen(
                                                     entities.add(SmartEntity.Upi(txt, word.bounds))
                                                 } else if (urlRegex.matches(txt)) {
                                                     entities.add(SmartEntity.Url(txt, word.bounds))
-                                                } else if (phoneRegex.matches(txt) && txt.count { it.isDigit() } >= 7) {
+                                                } else if (phoneRegex.matches(txt) && txt.count { it.isDigit() } >= 10) {
                                                     entities.add(SmartEntity.Phone(txt, word.bounds))
                                                 }
                                             }
@@ -1831,11 +1831,6 @@ fun CircleToSearchScreen(
                 val bitmapWidth = screenshot.width.toFloat()
                 val bitmapHeight = screenshot.height.toFloat()
 
-                // Dimmed background
-                Box(
-                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).pointerInput(Unit) { detectTapGestures { isEntityExtractMode = false } }
-                )
-
                 if (isExtractingEntities) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1988,7 +1983,7 @@ fun CircleToSearchScreen(
 // --- Phase 44: Smart Entity Extractor Models ---
 sealed class SmartEntity(val text: String, val bounds: android.graphics.RectF, val typeName: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val sourceColor: Color) {
     class Url(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Link", Icons.Default.Link, Color(0xFF1A73E8))
-    class Email(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Email", Icons.Default.Email, Color(0xFFE53935))
+    class Email(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Email", Icons.Default.Email, Color(0xFF1A73E8))
     class Phone(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Phone", Icons.Default.Phone, Color(0xFF43A047))
     class Upi(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "UPI", Icons.Default.Person, Color(0xFF8E24AA))
 }
