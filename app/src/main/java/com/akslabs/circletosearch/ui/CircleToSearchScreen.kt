@@ -158,6 +158,9 @@ import com.akslabs.circletosearch.utils.QrResultWithBounds
 import com.akslabs.circletosearch.utils.QrScanner
 import com.akslabs.circletosearch.ui.qrResultShortLabel
 import com.akslabs.circletosearch.utils.UIPreferences
+import com.akslabs.circletosearch.ui.components.MoreAppsBottomSheet
+import com.akslabs.circletosearch.ui.components.DonateBottomSheet
+import android.net.Uri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -171,6 +174,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import android.os.Build
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material3.Surface
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -188,9 +192,10 @@ fun CircleToSearchScreen(
     // Initialize preferences
     val uiPreferences = remember { UIPreferences(context) }
     
-    // Support Sheet State
-    var showSupportSheet by remember { mutableStateOf(false) }
-    val supportSheetState = rememberModalBottomSheetState()
+    
+    // New Sheet States
+    var showMoreAppsSheet by remember { mutableStateOf(false) }
+    var showDonateSheet by remember { mutableStateOf(false) }
 
     // Material You logic for colors
     val isDark = isSystemInDarkTheme()
@@ -1485,26 +1490,9 @@ fun CircleToSearchScreen(
                                 }
                             }
 
-                            // Share
-                            BottomBarButton("Share", { Icon(Icons.Default.Send, null) }) {
-                                if (screenshot != null) {
-                                    scope.launch {
-                                        try {
-                                            val fileName = "share_${java.util.UUID.randomUUID()}.png"
-                                            val path = ImageUtils.saveBitmap(context, selectedBitmap ?: screenshot, fileName)
-                                            val file = java.io.File(path)
-                                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.akslabs.circletosearch.fileprovider", file)
-                                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply { 
-                                                type = "image/png"
-                                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                                clipData = android.content.ClipData.newRawUri("Selection", uri)
-                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) 
-                                            }
-                                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Image").apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
-                                        } catch (e: Exception) {}
-                                    }
-                                }
+                            // More Apps
+                            BottomBarButton("More Apps", { Icon(Icons.Default.Apps, null) }) {
+                                showMoreAppsSheet = true
                             }
 
                             // Pin
@@ -1593,7 +1581,7 @@ fun CircleToSearchScreen(
 
                             // Donate
                             BottomBarButton("Donate", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.donation), null, modifier = Modifier.size(22.dp)) }) {
-                                showSupportSheet = true
+                                showDonateSheet = true
                             }
 
                             // Copy Text
@@ -1985,17 +1973,26 @@ fun CircleToSearchScreen(
             }
         }
 
-        if (showSupportSheet) {
-            com.akslabs.circletosearch.SupportSheet(
-                sheetState = supportSheetState,
-                onDismissRequest = {
-                    scope.launch {
-                        supportSheetState.hide()
-                    }.invokeOnCompletion {
-                        if (!supportSheetState.isVisible) {
-                            showSupportSheet = false
-                        }
-                    }
+        if (showMoreAppsSheet) {
+            MoreAppsBottomSheet(
+                onDismiss = { showMoreAppsSheet = false },
+                onAppSelected = { url ->
+                    try {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                    } catch (e: Exception) {}
+                    showMoreAppsSheet = false
+                }
+            )
+        }
+
+        if (showDonateSheet) {
+            DonateBottomSheet(
+                onDismiss = { showDonateSheet = false },
+                onDonateOptionSelected = { url ->
+                    try {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                    } catch (e: Exception) {}
+                    showDonateSheet = false
                 }
             )
         }
