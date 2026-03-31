@@ -112,6 +112,16 @@ class CopyTextOverlayManager(
 
     @Composable
     private fun TopBarUI(onClose: () -> Unit) {
+        val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+        ) { uri: android.net.Uri? ->
+            if (uri != null) {
+                TesseractEngine.importModel(context, uri) { success, msg ->
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -157,7 +167,7 @@ class CopyTextOverlayManager(
                         text = { Text("Import Model (.traineddata)") },
                         onClick = {
                             showMenu = false
-                            triggerImport()
+                            filePickerLauncher.launch("*/*")
                         }
                     )
                 }
@@ -183,10 +193,6 @@ class CopyTextOverlayManager(
             }
             .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    private fun triggerImport() {
-         Toast.makeText(context, "Please place .traineddata files in /sdcard/Android/data/${context.packageName}/files/tessdata/", Toast.LENGTH_LONG).show()
     }
 
     fun dismiss() {

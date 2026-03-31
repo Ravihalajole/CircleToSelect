@@ -1436,6 +1436,8 @@ fun CircleToSearchScreen(
                             IconButton(
                                 onClick = {
                                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    android.widget.Toast.makeText(context, "Coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                                    /*
                                     try {
                                         val shazamIntent = context.packageManager.getLaunchIntentForPackage("com.shazam.android")
                                         val soundHoundIntent = context.packageManager.getLaunchIntentForPackage("com.melodis.midomiMusicIdentifier.freemium")
@@ -1443,6 +1445,7 @@ fun CircleToSearchScreen(
                                         if (launchIntent != null) context.startActivity(launchIntent)
                                         else context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?q=shazam&c=apps")).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
                                     } catch (e: Exception) {}
+                                    */
                                 },
                                 modifier = Modifier
                                     .size(60.dp)
@@ -1455,11 +1458,14 @@ fun CircleToSearchScreen(
                             IconButton(
                                 onClick = {
                                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    android.widget.Toast.makeText(context, "Coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                                    /*
                                     try {
                                         val intent = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.translate")?.apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
                                         if (intent != null) context.startActivity(intent)
                                         else context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://translate.google.com")).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
                                     } catch (e: Exception) {}
+                                    */
                                 },
                                 modifier = Modifier
                                     .size(60.dp)
@@ -1585,7 +1591,7 @@ fun CircleToSearchScreen(
                             }
 
                             // Copy Text
-                            BottomBarButton("Copy Text", { Icon(Icons.Default.TextFields, null) }) {
+                            BottomBarButton("Copy Text", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.ocr), null, modifier = Modifier.size(20.dp)) }) {
                                 isCopyMode = true
                                 isCopyTextTriggered = true
                             }

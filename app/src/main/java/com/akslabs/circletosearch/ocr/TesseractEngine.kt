@@ -57,6 +57,43 @@ object TesseractEngine {
             .sorted()
     }
 
+    fun importModel(context: Context, uri: android.net.Uri, callback: (Boolean, String) -> Unit) {
+        try {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            var fileName = "unknown.traineddata"
+            if (cursor != null && cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1) {
+                    fileName = cursor.getString(nameIndex)
+                }
+                cursor.close()
+            }
+
+            if (!fileName.endsWith(".traineddata")) {
+                callback(false, "File must be a .traineddata Tesseract model.")
+                return
+            }
+
+            val tessDir = File(context.filesDir, "tessdata")
+            if (!tessDir.exists()) tessDir.mkdirs()
+
+            val destFile = File(tessDir, fileName)
+            
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            Log.d(TAG, "Imported model to ${destFile.absolutePath}")
+            callback(true, "Successfully imported ${fileName.removeSuffix(".traineddata").uppercase()} model!")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error importing model: ${e.message}")
+            callback(false, "Failed to import model")
+        }
+    }
+
     suspend fun extractText(context: Context, bitmap: Bitmap): List<TextNode> = withContext(Dispatchers.Default) {
         val result = mutableListOf<TextNode>()
         try {
