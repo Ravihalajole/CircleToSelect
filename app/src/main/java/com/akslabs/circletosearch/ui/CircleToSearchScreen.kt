@@ -1442,13 +1442,13 @@ fun CircleToSearchScreen(
                                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                     
                                     if (isAssistDataReady) {
-                                        // Use high-accuracy AssistStructure data
-                                        copyTextManager?.setAssistNodes(assistNodes)
+                                        // Use high-accuracy AssistStructure data + OCR merge
+                                        copyTextManager?.setHybridMode(assistNodes)
                                         isCopyMode = true
                                         isCopyTextTriggered = true
                                     } else {
                                         // Data not ready (likely bubble trigger)
-                                        android.widget.Toast.makeText(context, "Deep Scan: Please trigger via Home Long-Press for 100% accuracy.", android.widget.Toast.LENGTH_LONG).show()
+                                        android.widget.Toast.makeText(context, "Comming Soon: launch CTS as assistant to try Hybrid text detection.", android.widget.Toast.LENGTH_LONG).show()
                                     }
                                 },
                                 modifier = Modifier
@@ -1596,6 +1596,7 @@ fun CircleToSearchScreen(
 
                             // Copy Text
                             BottomBarButton("Copy Text", { Icon(painterResource(id = com.akslabs.circletosearch.R.drawable.ocr), null, modifier = Modifier.size(20.dp)) }) {
+                                copyTextManager?.setOcrOnlyMode()
                                 isCopyMode = true
                                 isCopyTextTriggered = true
                             }

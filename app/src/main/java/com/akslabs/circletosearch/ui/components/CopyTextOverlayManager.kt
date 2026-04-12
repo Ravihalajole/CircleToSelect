@@ -63,12 +63,20 @@ class CopyTextOverlayManager(
     
     private var nativeNodes: List<TextNode> = emptyList()
 
-    fun setAssistNodes(nodes: List<TextNode>) {
+    fun setHybridMode(nodes: List<TextNode>) {
         isAssistMode = true
         nativeNodes = nodes
         textNodes.clear()
         textNodes.addAll(nodes)
         updateAllWords()
+    }
+    
+    fun setOcrOnlyMode() {
+        isAssistMode = false
+        nativeNodes = emptyList()
+        textNodes.clear()
+        allWords = emptyList()
+        statusMessage.value = null
     }
     
     private fun updateAllWords() {
@@ -86,14 +94,9 @@ class CopyTextOverlayManager(
     fun getOverlayView(onDismiss: () -> Unit): View {
         onDismissCallback = onDismiss
         
-        // Reset state
+        // Reset interactive state
         globalSelectionStart = -1
         globalSelectionEnd = -1
-        
-        if (!isAssistMode) {
-            textNodes.clear()
-            allWords = emptyList()
-        }
         
         val container = FrameLayout(context)
         
