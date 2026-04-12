@@ -77,9 +77,13 @@ class AssistSessionService : VoiceInteractionSessionService() {
             }
 
             val allNodes = mutableListOf<com.akslabs.circletosearch.ui.components.TextNode>()
+            val coveredRects = mutableListOf<android.graphics.Rect>()
+            
             android.util.Log.d("AssistSessionService", "Capturing AssistStructure - Window count: ${structure.windowNodeCount}")
             
-            for (i in 0 until structure.windowNodeCount) {
+            // Process windows from TOP to BOTTOM (Reverse order)
+            // This allows us to track occlusion from overlays like BottomSheets.
+            for (i in (structure.windowNodeCount - 1) downTo 0) {
                 val windowNode = structure.getWindowNodeAt(i)
                 val windowTitle = windowNode.title?.toString() ?: "No Title"
                 
@@ -88,8 +92,15 @@ class AssistSessionService : VoiceInteractionSessionService() {
                 val windowOffsetX = windowNode.left
                 val windowOffsetY = windowNode.top
                 
-                // Collect all text from this window
-                collectTextNodes(windowNode.rootViewNode, windowOffsetX, windowOffsetY, allNodes)
+                // Collect all text from this window, passing the occlusion mask
+                collectTextNodes(windowNode.rootViewNode, windowOffsetX, windowOffsetY, allNodes, coveredRects)
+                
+                // After processing a window, we treat its main bounds as a "covered" area for lower windows.
+                // We only do this for windows that are likely to be opaque overlays (Dialogs, BottomSheets, etc.)
+                // System windows like StatusBar are handled separately or excluded if needed.
+                if (windowNode.width > 0 && windowNode.height > 0) {
+                    coveredRects.add(android.graphics.Rect(windowOffsetX, windowOffsetY, windowOffsetX + windowNode.width, windowOffsetY + windowNode.height))
+                }
             }
 
             if (allNodes.isEmpty()) {
@@ -105,21 +116,35 @@ class AssistSessionService : VoiceInteractionSessionService() {
             node: AssistStructure.ViewNode,
             parentX: Int,
             parentY: Int,
-            list: MutableList<com.akslabs.circletosearch.ui.components.TextNode>
+            list: MutableList<com.akslabs.circletosearch.ui.components.TextNode>,
+            coveredRects: List<android.graphics.Rect>
         ) {
             val nodeX = parentX + node.left
             val nodeY = parentY + node.top
+            val nodeRect = android.graphics.Rect(nodeX, nodeY, nodeX + node.width, nodeY + node.height)
+
+            // 1. OCCLUSION CHECK: If this node is completely covered by a higher-level window, skip it.
+            // This prevents highlighting text that is "behind" a bottom sheet or dialog.
+            val isOccluded = coveredRects.any { it.contains(nodeRect) }
+            if (isOccluded) return
+
+            // 2. PRECISION FILTERING: Avoid whole-screen highlights from root layouts.
+            // We only fallback to contentDescription/hint for small elements (icons/buttons).
+            val density = context.resources.displayMetrics.density
+            val smallSizeThreshold = 100 * density // Approx 100dp
             
-            // Extract text with fallback priority: text > contentDescription > hint
-            val text = node.text?.toString() 
-                       ?: node.contentDescription?.toString() 
-                       ?: node.hint?.toString()
+            val text = node.text?.toString() ?: run {
+                // For contentDescription/hint, only capture if the element is small (likely an icon or input field)
+                if (node.width < smallSizeThreshold && node.height < smallSizeThreshold) {
+                    node.contentDescription?.toString() ?: node.hint?.toString()
+                } else {
+                    null
+                }
+            }
 
             if (!text.isNullOrBlank() && 
                 node.visibility == android.view.View.VISIBLE &&
-                node.width > 0 && node.height > 0) {
-                
-                val nodeRect = android.graphics.Rect(nodeX, nodeY, nodeX + node.width, nodeY + node.height)
+                node.width > 0 && node.height > 10) {
                 
                 // Only add if it's within reasonable screen bounds (optional but safer)
                 // Filter out words that are clearly blank
@@ -162,7 +187,7 @@ class AssistSessionService : VoiceInteractionSessionService() {
             val nextParentY = nodeY - node.scrollY
 
             for (i in 0 until node.childCount) {
-                collectTextNodes(node.getChildAt(i), nextParentX, nextParentY, list)
+                collectTextNodes(node.getChildAt(i), nextParentX, nextParentY, list, coveredRects)
             }
         }
 
