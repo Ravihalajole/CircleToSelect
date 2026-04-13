@@ -34,6 +34,14 @@ import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.camera2.CameraManager
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.BitmapShader
+import android.graphics.Shader
+import android.graphics.Matrix
+import androidx.core.graphics.drawable.toBitmap
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -631,12 +639,10 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         handler.postDelayed({
             dispatchGesture(gesture, object : android.accessibilityservice.AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                    super.onCompleted(gestureDescription)
                     restoreFlags()
                 }
     
                 override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                    super.onCancelled(gestureDescription)
                     restoreFlags()
                 }
                 
@@ -736,6 +742,37 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         startActivity(intent)
     }
 
+    // Custom ImageView that clips to rounded corners on the Canvas level
+    // This is much more robust than OutlineProvider for rapid movements and scaling.
+    private class RoundedImageView(context: android.content.Context) : android.widget.ImageView(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val rect = RectF()
+        private val matrix = Matrix()
+        private val radius = 12f * context.resources.displayMetrics.density
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            val drawable = drawable ?: return
+            val bitmap = try { 
+                drawable.toBitmap() 
+            } catch (e: Exception) { 
+                return 
+            }
+            
+            val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            
+            // Adjust shader to current view bounds
+            matrix.reset()
+            matrix.setScale(width.toFloat() / bitmap.width, height.toFloat() / bitmap.height)
+            shader.setLocalMatrix(matrix)
+            
+            paint.shader = shader
+            rect.set(0f, 0f, width.toFloat(), height.toFloat())
+            
+            // This never "looses roundness" because it's rendering at the pixel level on each frame
+            canvas.drawRoundRect(rect, radius, radius, paint)
+        }
+    }
+
     private fun showPinnedArea(bitmap: Bitmap, rect: android.graphics.Rect) {
         android.util.Log.d("CircleToSearch", "showPinnedArea called for rect: $rect")
         
@@ -764,16 +801,10 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
         params.x = centerX - width / 2
         params.y = centerY - height / 2
 
-        val pinnedView = android.widget.ImageView(this).apply {
+        val pinnedView = RoundedImageView(this).apply {
             setImageBitmap(bitmap)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            elevation = 0f // Phase 35: Remove shadows
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: android.graphics.Outline) {
-                    // Phase 35: Fixed corner radius to be consistent with lens
-                    outline.setRoundRect(0, 0, view.width, view.height, 12f * resources.displayMetrics.density)
-                }
-            }
+            elevation = 0f
             clipToOutline = true
             
             var initialX = 0
@@ -791,11 +822,6 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
             val stopFling = {
                 flingAnimator?.cancel()
                 flingAnimator = null
-            }
-
-            // Function to ensure consistent roundness during any size/scale change
-            val updateOutline = {
-                this@apply.invalidateOutline()
             }
 
             // --- Phase 33: ScaleGestureDetector for pinch zoom ---
@@ -822,7 +848,6 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                         params.width = newWidth
                         params.height = newHeight
                         windowManager?.updateViewLayout(this@apply, params)
-                        updateOutline()
                     }
                     return true
                 }
@@ -919,15 +944,32 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                                             params.y = params.y.coerceIn(0, display.heightPixels - params.height)
                                         }
                                         
-                                        try { windowManager?.updateViewLayout(v, params) } catch(e: Exception) { anim.cancel() }
+                                        try { 
+                                            windowManager?.updateViewLayout(v, params)
+                                            // v.invalidateOutline() // No longer needed with canvas clipping
+                                        } catch(e: Exception) { 
+                                            anim.cancel()
+                                            flingAnimator = null
+                                        }
                                         
                                         // Lower friction for fun play
                                         currVx *= 0.992f
                                         currVy *= 0.992f
                                         
-                                        // Stop if too slow
-                                        if (Math.abs(currVx) < 40 && Math.abs(currVy) < 40) anim.cancel()
+                                        // Safety check: if velocity is zero or view is gone, stop
+                                        if (Math.abs(currVx) < 10 && Math.abs(currVy) < 10) {
+                                            anim.cancel()
+                                            flingAnimator = null
+                                        }
                                     }
+                                    addListener(object : android.animation.AnimatorListenerAdapter() {
+                                        override fun onAnimationEnd(animation: android.animation.Animator) {
+                                            flingAnimator = null
+                                        }
+                                        override fun onAnimationCancel(animation: android.animation.Animator) {
+                                            flingAnimator = null
+                                        }
+                                    })
                                     start()
                                 }
                             }

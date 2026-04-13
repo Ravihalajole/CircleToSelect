@@ -23,6 +23,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import com.akslabs.circletosearch.CircleToSearchAccessibilityService
 import android.util.Base64
+import android.view.Display
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -65,6 +66,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -1485,23 +1488,31 @@ fun CircleToSearchScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.Bottom
                         ) {
                             @Composable
                             fun BottomBarButton(label: String, icon: @Composable () -> Unit, onClick: () -> Unit) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    FilledTonalIconButton(
-                                        onClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onClick() },
-                                        modifier = Modifier.size(52.dp),
-                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        FilledTonalIconButton(
+                                            onClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onClick() },
+                                            modifier = Modifier.size(46.dp),
+                                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        ) { icon() }
+                                        Text(
+                                            text = label, 
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), 
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                                            textAlign = TextAlign.Center, 
+                                            maxLines = 1, 
+                                            softWrap = false
                                         )
-                                    ) { icon() }
-                                    Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
+                                    }
                                 }
                             }
 
@@ -1512,43 +1523,44 @@ fun CircleToSearchScreen(
 
                             // Pin
                             val isPinEnabled = selectedBitmap != null
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                FilledTonalIconButton(
-                                    onClick = { 
-                                        if (isPinEnabled) {
-                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                            selectedBitmap?.let { bmp ->
-                                                CircleToSearchAccessibilityService.pinArea(bmp, selectionRect ?: android.graphics.Rect())
-                                                // Close CTS UI after pinning
-                                                (context as? android.app.Activity)?.finish()
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    FilledTonalIconButton(
+                                        onClick = { 
+                                            if (isPinEnabled) {
+                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                selectedBitmap?.let { bmp ->
+                                                    CircleToSearchAccessibilityService.pinArea(bmp, selectionRect ?: android.graphics.Rect())
+                                                    (context as? android.app.Activity)?.finish()
+                                                }
                                             }
-                                        }
-                                    },
-                                    modifier = Modifier.size(52.dp),
-                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                        contentColor = if (isPinEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                        },
+                                        modifier = Modifier.size(46.dp),
+                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                            contentColor = if (isPinEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                        )
+                                    ) { 
+                                        Icon(
+                                            Icons.Default.PushPin, 
+                                            contentDescription = "Pin Selection",
+                                            modifier = Modifier.size(20.dp)
+                                        ) 
+                                    }
+                                    Text(
+                                        text = "Pin", 
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), 
+                                        color = if (isPinEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f), 
+                                        textAlign = TextAlign.Center, 
+                                        maxLines = 1, 
+                                        softWrap = false
                                     )
-                                ) { 
-                                    Icon(
-                                        Icons.Default.PushPin, 
-                                        contentDescription = "Pin Selection",
-                                        modifier = Modifier.size(22.dp)
-                                    ) 
                                 }
-                                Text(
-                                    text = "Pin", 
-                                    style = MaterialTheme.typography.labelSmall, 
-                                    color = if (isPinEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f), 
-                                    textAlign = TextAlign.Center, 
-                                    maxLines = 1, 
-                                    softWrap = false
-                                )
                             }
 
-                            // Phase 44: Smart Entity Extractor
+                            // Smart Entity Extractor
                             BottomBarButton("Smart Extract", { Icon(Icons.Default.Search, null, modifier = Modifier.size(22.dp)) }) {
                                 isEntityExtractMode = true
                                 if (detectedEntities.isEmpty() && !isExtractingEntities) {
