@@ -23,11 +23,11 @@ fun AccessibilityDisclosureDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             dismissOnBackPress = true,
-            dismissOnClickOutside = false
+            dismissOnClickOutside = true
         ),
         title = {
             Text(
-                text = "Accessibility Service Usage",
+                text = "Grant Accessibility Permission",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -51,7 +51,7 @@ fun AccessibilityDisclosureDialog(
                         onCheckedChange = { hasAgreed = it }
                     )
                     Text(
-                        text = "I understand and wish to proceed",
+                        text = "I understand how this permission will be used and agree to proceed",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(start = 4.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -64,7 +64,7 @@ fun AccessibilityDisclosureDialog(
                 onClick = onAccept,
                 enabled = hasAgreed
             ) {
-                Text("Accept and Enable", fontWeight = FontWeight.Bold)
+                Text("Grant", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

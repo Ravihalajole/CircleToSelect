@@ -27,6 +27,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -580,29 +581,23 @@ fun SupportDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Text(
-                    text = "Keep this Project Alive! ❤️",
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = "Help Keep this Project \n Alive! ❤️",
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     textAlign = TextAlign.Center
                 )
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
+                var isExpanded by remember { mutableStateOf(false) }
+
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                append("I am a solo developer")
-                            }
-                            append(" working hard to keep this project free, alive, and open source. Your support is the ")
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)) {
-                                append("only way I can continue")
-                            }
-                            append(" building and improving this app for everyone.")
-                        },
+                        text = "Please consider donating to this project Your\n support helps keep this project alive and \n enable us to add amazing \nnew features.",
                         style = MaterialTheme.typography.bodyLarge,
                         lineHeight = 22.sp,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium
                     )
                     
                     Column(
@@ -611,24 +606,53 @@ fun SupportDialog(
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                             .padding(16.dp)
+                            .animateContentSize()
                     ) {
-                        Text(
-                            text = "Planned Features:",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Planned Features:",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            
+                            TextButton(onClick = { isExpanded = !isExpanded }, contentPadding = PaddingValues(0.dp)) {
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        
+                        val allFeatures = listOf(
+                            "Self-hosted image upload (remove catbox/litterbox dependency)",
+                            "More triggers: volume button, power button, shake gesture etc.",
+                            "Add more actions to trigger with overlay",
+                            "Offline on-device translation",
+                            "Improved text detection accuracy",
+                            "More Search engines support SearXNG, DuckDuckGo, Brave Search",
+                            "Multi-language support",
+                            "More Overlay actions",
+                            "Long-press image to download or share",
+                            "Image result context menu (reverse search, save, open etc.)",
+                            "Material You dynamic theming improvements",
+                            "Floating bubble customization (size, opacity, position)",
                         )
                         
-                        val features = listOf(
-                            "Privacy Boost (removing cloud deps)",
-                            "Offline Translation & Text Detection",
-                            "New Triggers & Gesture Actions",
-                            "Universal Language Support & UI Polish"
-                        )
+                        val features = if (isExpanded) allFeatures else allFeatures.take(5)
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         features.forEach { feature ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            ) {
                                 Icon(
                                     Icons.Default.Check,
                                     null,
@@ -643,14 +667,6 @@ fun SupportDialog(
                             }
                         }
                     }
-
-                    Text(
-                        text = "If this app has made your day a little easier, please consider supporting my work! 🙏",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    )
                 }
                 
                 if (showCount >= 7) {
