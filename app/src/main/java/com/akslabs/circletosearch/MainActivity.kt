@@ -57,6 +57,7 @@ import com.akslabs.circletosearch.ui.theme.CircleToSearchTheme
 import com.akslabs.circletosearch.utils.PrivacyPreferences
 import com.akslabs.circletosearch.ui.components.DonateBottomSheet
 import com.akslabs.circletosearch.ui.components.AccessibilityDisclosureDialog
+import com.akslabs.circletosearch.ui.components.SearchMethodSelector
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -349,7 +350,18 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                 modifier = Modifier.align(Alignment.Start)
             )
             BubbleSwitch(context)
-            LensOnlySwitch(context)
+            
+            val uiPreferences = remember { com.akslabs.circletosearch.utils.UIPreferences(context) }
+            var isLensOnly by remember { mutableStateOf(uiPreferences.isUseGoogleLensOnly()) }
+            
+            SearchMethodSelector(
+                isLensOnly = isLensOnly,
+                onMethodChange = {
+                    isLensOnly = it
+                    uiPreferences.setUseGoogleLensOnly(it)
+                },
+                modifier = Modifier.padding(top = 16.dp)
+            )
             
             ListItem(
                 headlineContent = { Text("OCR Language Settings") },
@@ -752,71 +764,3 @@ fun BubbleSwitch(context: android.content.Context) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LensOnlySwitch(context: android.content.Context) {
-    val uiPreferences = remember { com.akslabs.circletosearch.utils.UIPreferences(context) }
-    var isLensOnlyEnabled by remember { mutableStateOf(uiPreferences.isUseGoogleLensOnly()) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Search Method",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        SingleChoiceSegmentedButtonRow(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            SegmentedButton(
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                onClick = {
-                    isLensOnlyEnabled = false
-                    uiPreferences.setUseGoogleLensOnly(false)
-                },
-                selected = !isLensOnlyEnabled,
-                icon = { SegmentedButtonDefaults.Icon(!isLensOnlyEnabled) }
-            ) {
-                Text("Multi-Search Engines", style = MaterialTheme.typography.labelLarge)
-            }
-            SegmentedButton(
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                onClick = {
-                    isLensOnlyEnabled = true
-                    uiPreferences.setUseGoogleLensOnly(true)
-                },
-                selected = isLensOnlyEnabled,
-                icon = { SegmentedButtonDefaults.Icon(isLensOnlyEnabled) }
-            ) {
-                Text("Google Lens", style = MaterialTheme.typography.labelLarge)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Lens needs Google App Installed. But Degoogled friends can stick with the versatile Multi-Search Engine mode.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}

@@ -1494,31 +1494,49 @@ fun CircleToSearchScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
+                                .padding(horizontal = 0.dp), // Maximize space for labels
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.Bottom
                         ) {
                             @Composable
-                            fun BottomBarButton(label: String, icon: @Composable () -> Unit, onClick: () -> Unit) {
+                            fun BottomBarButton(
+                                label: String, 
+                                icon: @Composable () -> Unit, 
+                                enabled: Boolean = true,
+                                onClick: () -> Unit
+                            ) {
                                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         FilledTonalIconButton(
-                                            onClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onClick() },
+                                            onClick = { 
+                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                onClick() 
+                                            },
+                                            enabled = enabled,
                                             modifier = Modifier.size(48.dp),
                                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                                contentColor = MaterialTheme.colorScheme.onSurface
+                                                contentColor = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                             )
                                         ) { icon() }
+                                        
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        
                                         Text(
                                             text = label, 
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp), 
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.5.sp, 
+                                                lineHeight = 12.sp,
+                                                letterSpacing = (-0.4).sp,
+                                                fontWeight = FontWeight.Medium
+                                            ), 
+                                            color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f), 
                                             textAlign = TextAlign.Center, 
                                             maxLines = 1,
-                                            minLines = 1,
                                             overflow = TextOverflow.Visible,
-                                            modifier = Modifier.padding(bottom = 0.dp)
+                                            modifier = Modifier.padding(horizontal = 0.dp)
                                         )
                                     }
                                 }
@@ -1531,42 +1549,14 @@ fun CircleToSearchScreen(
 
                             // Pin
                             val isPinEnabled = selectedBitmap != null
-                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    FilledTonalIconButton(
-                                        onClick = { 
-                                            if (isPinEnabled) {
-                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                selectedBitmap?.let { bmp ->
-                                                    CircleToSearchAccessibilityService.pinArea(bmp, selectionRect ?: android.graphics.Rect())
-                                                    (context as? android.app.Activity)?.finish()
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.size(48.dp),
-                                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                            contentColor = if (isPinEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                                            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                        )
-                                    ) { 
-                                        Icon(
-                                            Icons.Default.PushPin, 
-                                            contentDescription = "Pin Selection",
-                                            modifier = Modifier.size(22.dp)
-                                        ) 
-                                    }
-                                    Text(
-                                        text = "Pin", 
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp), 
-                                        color = if (isPinEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f), 
-                                        textAlign = TextAlign.Center, 
-                                        maxLines = 1,
-                                        minLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(bottom = 0.dp)
-                                    )
+                            BottomBarButton(
+                                label = "Pin", 
+                                icon = { Icon(Icons.Default.PushPin, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                                enabled = isPinEnabled
+                            ) {
+                                selectedBitmap?.let { bmp ->
+                                    CircleToSearchAccessibilityService.pinArea(bmp, selectionRect ?: android.graphics.Rect())
+                                    (context as? android.app.Activity)?.finish()
                                 }
                             }
 
