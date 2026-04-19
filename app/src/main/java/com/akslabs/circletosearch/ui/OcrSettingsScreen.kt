@@ -134,7 +134,7 @@ fun OcrSettingsScreen(onBack: () -> Unit) {
                                     }
                                     pop()
                                     
-                                    append(" and import them below.")
+                                    append("with /model and import them below.")
                                 }
 
                                 ClickableText(
