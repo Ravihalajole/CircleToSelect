@@ -188,6 +188,7 @@ import androidx.compose.material3.Surface
 fun CircleToSearchScreen(
     screenshot: Bitmap?,
     onClose: () -> Unit,
+    searchModeOverride: Boolean? = null,
     copyTextManager: com.akslabs.circletosearch.ui.components.CopyTextOverlayManager? = null,
     onCopyText: () -> Unit = {},
     onExitCopyMode: () -> Unit = {}
@@ -197,6 +198,16 @@ fun CircleToSearchScreen(
     
     // Initialize preferences
     val uiPreferences = remember { UIPreferences(context) }
+    
+    // Reactive search method state — observed via flow so it is always in sync
+    // with whatever set it (home screen, settings sheet, or accessibility actions).
+    // Reading from the flow avoids the SharedPreferences in-memory cache lag
+    // that occurs when a write comes from a different activity instance.
+    val isGoogleLensOnly by uiPreferences.observeUseGoogleLensOnly()
+        .collectAsState(initial = uiPreferences.isUseGoogleLensOnly())
+    
+    // Effective state: use override if provided by trigger, else use global preference
+    val effectiveLensOnly = searchModeOverride ?: isGoogleLensOnly
     
     
     // New Sheet States
@@ -635,8 +646,12 @@ fun CircleToSearchScreen(
                     if (selectedBitmap != null) {
                         isLoading = true
                         
+                        val effectiveLensOnly = searchModeOverride ?: isGoogleLensOnly
+                        
                         // 1. Google Lens Only Mode Check
-                        if (uiPreferences.isUseGoogleLensOnly()) {
+                        // Use the reactive state (not a direct pref read) so we always
+                        // get the value that was last committed, even from another activity.
+                        if (effectiveLensOnly) {
                             // Save to cache and launch Lens
                             val path = ImageUtils.saveBitmap(context, selectedBitmap!!)
                             val uri = android.net.Uri.fromFile(java.io.File(path))
@@ -1424,9 +1439,13 @@ fun CircleToSearchScreen(
                                     IconButton(
                                         onClick = {
                                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                            uiPreferences.setUseGoogleLensOnly(true)
                                             if (screenshot != null) {
-                                                selectedBitmap = screenshot
+                                                // Trigger Lens directly as this is the explicit Lens button
+                                                // but do NOT change the global preference.
+                                                val path = ImageUtils.saveBitmap(context, screenshot)
+                                                val uri = android.net.Uri.fromFile(java.io.File(path))
+                                                searchWithGoogleLens(uri, context)
+                                                onClose()
                                             }
                                         },
                                         modifier = Modifier.size(44.dp)
