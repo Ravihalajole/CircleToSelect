@@ -1217,7 +1217,7 @@ fun CircleToSearchScreen(
                     // Action Button (Menu)
                     Box(
                         modifier = Modifier
-                            .background(Color.Gray.copy(alpha = 0.5f), CircleShape)
+                            .background(Color.Black.copy(alpha = 0.35f), CircleShape)
                             .size(40.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1235,7 +1235,9 @@ fun CircleToSearchScreen(
 
                         androidx.compose.material3.DropdownMenu(
                             expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
+                            onDismissRequest = { showMenu = false },
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                            tonalElevation = 6.dp
                         ) {
                             val isDesktop = isDesktop(selectedEngine)
                             androidx.compose.material3.DropdownMenuItem(
