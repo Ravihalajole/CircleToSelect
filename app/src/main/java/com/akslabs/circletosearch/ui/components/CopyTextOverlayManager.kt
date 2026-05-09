@@ -26,6 +26,8 @@ import com.akslabs.circletosearch.ocr.TesseractEngine
 import com.akslabs.circletosearch.utils.ImageUtils
 import kotlinx.coroutines.*
 import java.util.UUID
+import com.akslabs.circletosearch.ocr.MlKitEngine
+
 
 private class ToolbarButton(val label: String, val rect: Rect)
 
@@ -149,6 +151,7 @@ class CopyTextOverlayManager(
 private fun scanNodes(view: View, isHybrid: Boolean = false) {
     scanJob?.cancel()
     statusMessage.value = null
+    
     scanJob = scope.launch(Dispatchers.Main) {
         isScanning.value = true
         val bitmap = screenshotBitmap ?: BitmapRepository.getScreenshot()
@@ -158,14 +161,17 @@ private fun scanNodes(view: View, isHybrid: Boolean = false) {
             return@launch
         }
 
-        // Use the new MlKitEngine
+        // MlKitEngine is now a suspend function, so this will 'wait' 
+        // for the result without blocking the Main thread.
         val nodes = MlKitEngine.extractText(bitmap)
         
         if (isHybrid) {
-            mergeHybridNodes(nodes) // Your existing merge logic
+            mergeHybridNodes(nodes) 
         } else {
             textNodes.clear()
-            textNodes.addAll(nodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left })))
+            // Explicitly sorting for top-to-bottom reading order
+            val sorted = nodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
+            textNodes.addAll(sorted)
             updateAllWords()
         }
 
@@ -174,9 +180,11 @@ private fun scanNodes(view: View, isHybrid: Boolean = false) {
         }
         
         isScanning.value = false
-        view.invalidate()
+        // Trigger a redraw of the DimPunchOutView
+        view.invalidate() 
     }
 }
+
 
 
     private fun mergeHybridNodes(ocrNodes: List<TextNode>) {
