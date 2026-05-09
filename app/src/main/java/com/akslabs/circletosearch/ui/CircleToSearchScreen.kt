@@ -64,6 +64,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
 import kotlin.math.min
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,7 +87,8 @@ fun CircleToSearchScreen(
     
     // NEW: Centralized Mode Management. Default is TEXT (OCR)
     var currentMode by remember { mutableStateOf("TEXT") } // "TEXT", "DRAW", "SMARTSCAN"
-    
+    var isEntityExtractMode by remember { mutableStateOf(false) }
+
     var friendlyMessage by remember { mutableStateOf("") }
     var isMessageVisible by remember { mutableStateOf(false) }
 
@@ -155,7 +158,7 @@ fun CircleToSearchScreen(
             if (screenshot != null) {
                 Box(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                        compositingStrategy = CompositingStrategy.Offscreen
                     }
                 ) {
                     Image(
