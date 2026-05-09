@@ -131,4 +131,5 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android:4.7.0")
     implementation("com.google.zxing:core:3.5.4")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }

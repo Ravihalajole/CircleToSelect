@@ -145,43 +145,39 @@ class CopyTextOverlayManager(
         dimView?.let { scanNodes(it) }
     }
 
-    private fun scanNodes(view: View, isHybrid: Boolean = false) {
-        scanJob?.cancel()
-        statusMessage.value = null
-        scanJob = scope.launch(Dispatchers.Main) {
-            isScanning.value = true
-            val bitmap = screenshotBitmap ?: BitmapRepository.getScreenshot()
-            
-            if (bitmap == null) {
-                if (isAssistMode && textNodes.isEmpty()) {
-                    statusMessage.value = "This app doesn't allow reading screen content."
-                }
-                isScanning.value = false
-                view.invalidate()
-                return@launch
-            }
-
-            try {
-                val ocrNodes = TesseractEngine.extractText(context, bitmap)
-                if (isHybrid) {
-                    mergeHybridNodes(ocrNodes)
-                } else {
-                    val sortedNodes = ocrNodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
-                    textNodes.clear()
-                    textNodes.addAll(sortedNodes)
-                    updateAllWords()
-                }
-                if (textNodes.isEmpty()) {
-                    statusMessage.value = "No text found on screen."
-                }
-            } catch (e: Exception) {
-                Log.e("CopyTextOverlay", "Extraction failed: ${e.message}")
-            } finally {
-                isScanning.value = false
-                view.invalidate()
-            }
+    // Inside CopyTextOverlayManager.kt
+private fun scanNodes(view: View, isHybrid: Boolean = false) {
+    scanJob?.cancel()
+    statusMessage.value = null
+    scanJob = scope.launch(Dispatchers.Main) {
+        isScanning.value = true
+        val bitmap = screenshotBitmap ?: BitmapRepository.getScreenshot()
+        
+        if (bitmap == null) {
+            isScanning.value = false
+            return@launch
         }
+
+        // Use the new MlKitEngine
+        val nodes = MlKitEngine.extractText(bitmap)
+        
+        if (isHybrid) {
+            mergeHybridNodes(nodes) // Your existing merge logic
+        } else {
+            textNodes.clear()
+            textNodes.addAll(nodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left })))
+            updateAllWords()
+        }
+
+        if (textNodes.isEmpty()) {
+            statusMessage.value = "No text found on screen."
+        }
+        
+        isScanning.value = false
+        view.invalidate()
     }
+}
+
 
     private fun mergeHybridNodes(ocrNodes: List<TextNode>) {
         val newNodes = mutableListOf<TextNode>()
