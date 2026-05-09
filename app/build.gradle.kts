@@ -24,14 +24,14 @@ plugins {
 }
 
 android {
-    namespace = "com.akslabs.circletoselect"
+    namespace = "com.akslabs.circletosearch"
     compileSdk {
         version = release(36)
     }
 
 
     defaultConfig {
-        applicationId = "com.akslabs.circletoselect"
+        applicationId = "com.akslabs.circletosearch"
         minSdk = 29
         targetSdk = 36
         versionCode = 7
