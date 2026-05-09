@@ -22,7 +22,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import com.akslabs.circletosearch.data.BitmapRepository
-import com.akslabs.circletosearch.ocr.TesseractEngine
 import com.akslabs.circletosearch.utils.ImageUtils
 import kotlinx.coroutines.*
 import java.util.UUID

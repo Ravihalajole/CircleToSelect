@@ -1,16 +1,15 @@
 package com.akslabs.circletosearch
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,7 +17,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -26,13 +24,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.akslabs.circletosearch.ui.theme.CircleToSearchTheme
 import com.akslabs.circletosearch.ui.components.AccessibilityDisclosureDialog
-import androidx.compose.foundation.shape.RoundedCornerShape
-
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Toast.makeText(this, "Double tap status bar or use floating bubble to start.", Toast.LENGTH_LONG).show()
+        
+        Toast.makeText(this, "Double tap status bar or use bubble to start.", Toast.LENGTH_LONG).show()
+        
         setContent {
             CircleToSearchTheme {
                 Surface(
@@ -40,13 +38,14 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     var currentScreen by remember { mutableStateOf("home") }
-                    androidx.compose.animation.Crossfade(targetState = currentScreen) { screen ->
+                    
+                    Crossfade(targetState = currentScreen, label = "ScreenTransition") { screen ->
                         when (screen) {
-                            "settings" -> com.akslabs.circletosearch.ui.OverlaySettingsScreen(onBack = { currentScreen = "home" })
-                            "ocr_settings" -> com.akslabs.circletosearch.ui.OcrSettingsScreen(onBack = { currentScreen = "home" })
+                            "settings" -> com.akslabs.circletosearch.ui.OverlaySettingsScreen(
+                                onBack = { currentScreen = "home" }
+                            )
                             else -> SetupScreen(
-                                onSettingsClick = { currentScreen = "settings" },
-                                onOcrSettingsClick = { currentScreen = "ocr_settings" }
+                                onSettingsClick = { currentScreen = "settings" }
                             )
                         }
                     }
@@ -58,15 +57,15 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
+fun SetupScreen(onSettingsClick: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
     
     var isAccessibilityEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
     var isDefaultAssistant by remember { mutableStateOf(isDefaultAssistant(context)) }
     var showAccessibilityDisclosure by remember { mutableStateOf(false) }
     
+    // Refresh status when returning to app
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -91,9 +90,8 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
         ) {
             Spacer(modifier = Modifier.height(32.dp))
             
-            Box(
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            // Header
+            Box(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Circle to Extract",
                     style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
@@ -104,190 +102,79 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                     onClick = onSettingsClick,
                     modifier = Modifier.align(Alignment.CenterEnd)
                 ) {
-                     Icon(Icons.Default.Settings, contentDescription = "Overlay Settings", tint = MaterialTheme.colorScheme.primary)
+                     Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
                 }
             }
+            
             Spacer(modifier = Modifier.height(16.dp))
+            
             Text(
-                text = "Extract text & entities from your screen instantly, 100% offline.",
+                text = "Extract text & entities from your screen instantly, 100% offline via ML Kit.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Start
+                textAlign = TextAlign.Center
             )
             
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text(
-                text = "REQUIRED:",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isAccessibilityEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                modifier = Modifier.align(Alignment.Start).padding(bottom = 8.dp)
+            // Accessibility Section
+            SectionLabel(
+                text = "REQUIRED:", 
+                color = if (isAccessibilityEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
             )
             
             if (isAccessibilityEnabled) {
-                Card(
-                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Granted",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = "Accessibility Service Active",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "Double tap status bar to launch",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
+                StatusCard(
+                    title = "Accessibility Service Active",
+                    subtitle = "Double tap status bar to launch",
+                    icon = Icons.Default.CheckCircle,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                )
             } else {
-                Card(
-                    onClick = { showAccessibilityDisclosure = true },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Accessibility,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = "Enable Accessibility",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                             Text(
-                                text = "Required to capture screen areas and detect gestures locally.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
+                ActionCard(
+                    title = "Enable Accessibility",
+                    subtitle = "Required for screen capture and gestures.",
+                    icon = Icons.Default.Accessibility,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    onClick = { showAccessibilityDisclosure = true }
+                )
             }
             
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "OPTIONAL: For Home Button Trigger",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.align(Alignment.Start).padding(bottom = 8.dp)
-            )
+            // Assistant Section
+            SectionLabel(text = "OPTIONAL: For Home Button Trigger", color = MaterialTheme.colorScheme.secondary)
 
             if (isDefaultAssistant) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Active",
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                         Text(
-                            text = "Default Assistant Set",
-                            style = MaterialTheme.typography.titleMedium,
-                             color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
+                StatusCard(
+                    title = "Default Assistant Set",
+                    subtitle = "Hold Home or swipe up to trigger",
+                    icon = Icons.Default.CheckCircle,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                )
             } else {
-                Card(
+                ActionCard(
+                    title = "Set as Default Assistant",
+                    subtitle = "Trigger via system assistant gestures.",
+                    icon = Icons.Default.TouchApp,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
                     onClick = {
-                        val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
-                        context.startActivity(intent)
-                    },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.TouchApp,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Set as Default Assistant",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "Hold Home or swipe up to parse screen text instantly.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
+                        context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
                     }
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "CUSTOMIZATION",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.align(Alignment.Start)
-            )
+            // Customization Section
+            SectionLabel(text = "CUSTOMIZATION", color = MaterialTheme.colorScheme.secondary)
             BubbleSwitch(context)
             
-            ListItem(
-                headlineContent = { Text("OCR Language Settings") },
-                supportingContent = { Text("Manage offline Tesseract OCR models") },
-                trailingContent = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                modifier = Modifier.clickable(onClick = onOcrSettingsClick),
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-            Spacer(modifier = Modifier.height(25.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
+            // Privacy Footer
             Text(
-                text = "Privacy First.\nNo internet permission required. Your data never leaves your device.",
+                text = "Privacy First.\nOn-device recognition ensures your data never leaves your device.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center,
@@ -302,10 +189,9 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             onAccept = {
                 showAccessibilityDisclosure = false
                 try {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    context.startActivity(intent)
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Could not open Accessibility Settings", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Could not open settings", Toast.LENGTH_LONG).show()
                 }
             },
             onDismiss = { showAccessibilityDisclosure = false }
@@ -313,17 +199,62 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
     }
 }
 
+@Composable
+fun SectionLabel(text: String, color: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+    )
+}
+
+@Composable
+fun StatusCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, containerColor: Color) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(text = title, style = MaterialTheme.typography.titleMedium)
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ActionCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, containerColor: Color, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(text = title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 fun isAccessibilityServiceEnabled(context: android.content.Context): Boolean {
     val expectedComponentName = android.content.ComponentName(context, CircleToSearchAccessibilityService::class.java)
     val enabledServicesSetting = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-    val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
-    colonSplitter.setString(enabledServicesSetting)
-    while (colonSplitter.hasNext()) {
-        val componentNameString = colonSplitter.next()
-        val enabledComponent = android.content.ComponentName.unflattenFromString(componentNameString)
-        if (enabledComponent != null && enabledComponent == expectedComponentName) return true
+    return enabledServicesSetting.split(':').any {
+        android.content.ComponentName.unflattenFromString(it) == expectedComponentName
     }
-    return false
 }
 
 fun isDefaultAssistant(context: android.content.Context): Boolean {
@@ -335,17 +266,17 @@ fun isDefaultAssistant(context: android.content.Context): Boolean {
 @Composable
 fun BubbleSwitch(context: android.content.Context) {
     val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-    val isBubbleEnabled = remember { mutableStateOf(prefs.getBoolean("bubble_enabled", false)) }
+    var isEnabled by remember { mutableStateOf(prefs.getBoolean("bubble_enabled", false)) }
 
     ListItem(
         headlineContent = { Text("Floating Bubble") },
-        supportingContent = { Text("Show a floating button to trigger extraction") },
+        supportingContent = { Text("Trigger extraction with a floating button") },
         trailingContent = {
             Switch(
-                checked = isBubbleEnabled.value,
-                onCheckedChange = { enabled ->
-                    isBubbleEnabled.value = enabled
-                    prefs.edit().putBoolean("bubble_enabled", enabled).apply()
+                checked = isEnabled,
+                onCheckedChange = { 
+                    isEnabled = it
+                    prefs.edit().putBoolean("bubble_enabled", it).apply()
                 }
             )
         },
