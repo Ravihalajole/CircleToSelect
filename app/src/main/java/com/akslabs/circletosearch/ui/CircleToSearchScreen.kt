@@ -67,6 +67,8 @@ import kotlin.math.max
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.CompositingStrategy
 import kotlin.math.min
+import com.akslabs.circletosearch.ocr.MlKitEngine
+import com.akslabs.circletosearch.ui.components.TextNode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -465,52 +467,63 @@ fun CircleToSearchScreen(
                         }
 
                         // SmartScan
-                        BottomBarButton("SmartScan", { Icon(Icons.Default.Search, null, modifier = Modifier.size(22.dp)) }, isSelected = isEntityExtractMode) {
-                            isEntityExtractMode = !isEntityExtractMode
-                            if (isEntityExtractMode && detectedEntities.isEmpty() && !isExtractingEntities) {
-                                isExtractingEntities = true
-                                scope.launch(Dispatchers.IO) {
-                                    val bmp = screenshot ?: return@launch
-                                    val textNodes = com.akslabs.circletosearch.ocr.TesseractEngine.extractText(context, bmp)
-                                    val entities = mutableListOf<SmartEntity>()
-                                    
-                                    val urlRegex = android.util.Patterns.WEB_URL.toRegex()
-                                    val emailRegex = android.util.Patterns.EMAIL_ADDRESS.toRegex()
-                                    val phoneRegexLine = Regex("""(\+?[\d\s\-\(\).]{9,20})""")
-                                    val upiRegex = Regex("""[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}""")
+                        // Inside CircleToSearchScreen.kt
+BottomBarButton("SmartScan", { Icon(Icons.Default.Search, null, modifier = Modifier.size(22.dp)) }, isSelected = isEntityExtractMode) {
+    isEntityExtractMode = !isEntityExtractMode
+    if (isEntityExtractMode && detectedEntities.isEmpty() && !isExtractingEntities) {
+        isExtractingEntities = true
+        scope.launch(Dispatchers.IO) {
+            val bmp = screenshot ?: return@launch
+            
+            // FIX: Use MlKitEngine instead of TesseractEngine
+            // Note: MlKitEngine.extractText only needs the bitmap
+            val foundNodes = MlKitEngine.extractText(bmp) 
+            
+            val entities = mutableListOf<SmartEntity>()
+            
+            val urlRegex = android.util.Patterns.WEB_URL.toRegex()
+            val emailRegex = android.util.Patterns.EMAIL_ADDRESS.toRegex()
+            val phoneRegexLine = Regex("""(\+?[\d\s\-\(\).]{9,20})""")
+            val upiRegex = Regex("""[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}""")
 
-                                    textNodes.forEach { node ->
-                                        val lineText = node.fullText
-                                        phoneRegexLine.findAll(lineText).forEach { match ->
-                                            val phoneCandidate = match.value.trim()
-                                            if (phoneCandidate.count { it.isDigit() } >= 10) {
-                                                val startIdx = match.range.first
-                                                val endIdx = match.range.last + 1
-                                                val ratioStart = startIdx.toFloat() / lineText.length.coerceAtLeast(1)
-                                                val ratioEnd = endIdx.toFloat() / lineText.length.coerceAtLeast(1)
-                                                val entityBounds = android.graphics.RectF(
-                                                    node.bounds.left.toFloat() + (ratioStart * node.bounds.width().toFloat()),
-                                                    node.bounds.top.toFloat(),
-                                                    node.bounds.left.toFloat() + (ratioEnd * node.bounds.width().toFloat()),
-                                                    node.bounds.bottom.toFloat()
-                                                )
-                                                entities.add(SmartEntity.Phone(phoneCandidate, entityBounds))
-                                            }
-                                        }
-                                        node.words.forEach { word ->
-                                            val txt = word.text.trim()
-                                            if (emailRegex.matches(txt)) entities.add(SmartEntity.Email(txt, word.bounds))
-                                            else if (upiRegex.matches(txt)) entities.add(SmartEntity.Upi(txt, word.bounds))
-                                            else if (urlRegex.matches(txt)) entities.add(SmartEntity.Url(txt, word.bounds))
-                                        }
-                                    }
-                                    withContext(Dispatchers.Main) {
-                                        detectedEntities = entities
-                                        isExtractingEntities = false
-                                    }
-                                }
-                            }
-                        }
+            // FIX: Add explicit type (node: TextNode) to help the compiler
+            foundNodes.forEach { node: TextNode ->
+                val lineText = node.fullText
+                phoneRegexLine.findAll(lineText).forEach { match ->
+                    val phoneCandidate = match.value.trim()
+                    if (phoneCandidate.count { it.isDigit() } >= 10) {
+                        val startIdx = match.range.first
+                        val endIdx = match.range.last + 1
+                        val ratioStart = startIdx.toFloat() / lineText.length.coerceAtLeast(1)
+                        val ratioEnd = endIdx.toFloat() / lineText.length.coerceAtLeast(1)
+                        
+                        val entityBounds = android.graphics.RectF(
+                            node.bounds.left.toFloat() + (ratioStart * node.bounds.width().toFloat()),
+                            node.bounds.top.toFloat(),
+                            node.bounds.left.toFloat() + (ratioEnd * node.bounds.width().toFloat()),
+                            node.bounds.bottom.toFloat()
+                        )
+                        entities.add(SmartEntity.Phone(phoneCandidate, entityBounds))
+                    }
+                }
+                
+                // FIX: Add explicit type (word) to help the compiler
+                node.words.forEach { word ->
+                    val txt = word.text.trim()
+                    if (emailRegex.matches(txt)) entities.add(SmartEntity.Email(txt, word.bounds))
+                    else if (upiRegex.matches(txt)) entities.add(SmartEntity.Upi(txt, word.bounds))
+                    else if (urlRegex.matches(txt)) entities.add(SmartEntity.Url(txt, word.bounds))
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                detectedEntities = entities
+                isExtractingEntities = false
+            }
+        }
+    }
+}
+
 
                         // Local QR Scan
                         BottomBarButton("Scan QR", { Icon(Icons.Default.QrCode, null) }, isSelected = showQrSheet) {
