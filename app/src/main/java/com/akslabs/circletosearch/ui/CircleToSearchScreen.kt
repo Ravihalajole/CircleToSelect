@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+
 import com.akslabs.circletosearch.CircleToSearchAccessibilityService
 import com.akslabs.circletosearch.R
 import com.akslabs.circletosearch.ui.components.CopyTextOverlayManager
@@ -200,16 +201,35 @@ fun CircleToSearchScreen(
             }
 
             // Gradient Border
-            if (uiPreferences.isShowGradientBorder()) {
-                AnimatedVisibility(visible = isUIVisible, enter = fadeIn(animationSpec = tween(700))) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .border(8.dp, Brush.verticalGradient(OverlayGradientColors.map { it.copy(alpha = 0.5f) }), RoundedCornerShape(24.dp))
-                            .clip(RoundedCornerShape(24.dp))
-                    )
-                }
-            }
+           if (uiPreferences.isShowGradientBorder()) {
+    AnimatedVisibility(visible = isUIVisible, enter = fadeIn(animationSpec = tween(700))) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Create the shared brush for both sides
+            val edgeGradient = Brush.verticalGradient(
+                colors = OverlayGradientColors.map { it.copy(alpha = 0.5f) }
+            )
+
+            // Left Edge Gradient
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(6.dp) // Adjust thickness here
+                    .background(edgeGradient)
+                    .align(Alignment.CenterStart)
+            )
+
+            // Right Edge Gradient
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(6.dp) // Adjust thickness here
+                    .background(edgeGradient)
+                    .align(Alignment.CenterEnd)
+            )
+        }
+    }
+}
+
 
             // Gesture Drawing Logic (ONLY active in DRAW mode)
             if (currentMode == "DRAW") {
