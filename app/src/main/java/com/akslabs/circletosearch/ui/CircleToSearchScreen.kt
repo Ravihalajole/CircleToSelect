@@ -65,8 +65,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
-import androidx.compose.ui.graphics.graphicsLayer
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +82,10 @@ fun CircleToSearchScreen(
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     var isUIVisible by remember { mutableStateOf(false) }
-    var isCopyMode by remember { mutableStateOf(false) }
+    
+    // NEW: Centralized Mode Management. Default is TEXT (OCR)
+    var currentMode by remember { mutableStateOf("TEXT") } // "TEXT", "DRAW", "SMARTSCAN"
+    
     var friendlyMessage by remember { mutableStateOf("") }
     var isMessageVisible by remember { mutableStateOf(false) }
 
@@ -93,7 +94,6 @@ fun CircleToSearchScreen(
     var detectedQrCodes by remember { mutableStateOf<List<QrResultWithBounds>>(emptyList()) }
     var selectedQrResult by remember { mutableStateOf<QrResultWithBounds?>(null) }
 
-    var isEntityExtractMode by remember { mutableStateOf(false) }
     var detectedEntities by remember { mutableStateOf<List<SmartEntity>>(emptyList()) }
     var isExtractingEntities by remember { mutableStateOf(false) }
 
@@ -117,32 +117,24 @@ fun CircleToSearchScreen(
         }
     }
 
-    LaunchedEffect(screenshot) {
+    // Auto-trigger OCR when the screenshot is loaded and mode is TEXT
+    LaunchedEffect(screenshot, currentMode) {
         if (screenshot != null) {
-            isCopyMode = false
-            selectionRect = null
-            selectedBitmap = null
-            currentPathPoints.clear()
-            selectionAnim.snapTo(0f)
-            
-            val found = withContext(Dispatchers.Default) {
-                QrScanner.scanBitmapAll(screenshot)
+            if (currentMode == "TEXT") {
+                copyTextManager?.setOcrOnlyMode()
             }
+            // Background QR scanning
+            val found = withContext(Dispatchers.Default) { QrScanner.scanBitmapAll(screenshot) }
             detectedQrCodes = found
-        } else {
-            detectedQrCodes = emptyList()
         }
     }
 
     BackHandler(enabled = true) {
-        if (isCopyMode) {
-            isCopyMode = false
-            onExitCopyMode()
-        } else if (showQrSheet) {
+        if (showQrSheet) {
             showQrSheet = false
             selectedQrResult = null
-        } else if (isEntityExtractMode) {
-            isEntityExtractMode = false
+        } else if (currentMode != "TEXT") {
+            currentMode = "TEXT" // Revert to default mode instead of closing
         } else {
             onClose()
         }
@@ -152,17 +144,15 @@ fun CircleToSearchScreen(
         Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
 
             // Friendly Message Bubble
-            if (!isCopyMode) {
-                Box(
-                    modifier = Modifier.fillMaxSize().offset(y = 100.dp).zIndex(100f),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    FriendlyMessageBubble(message = friendlyMessage, visible = isMessageVisible)
-                }
+            Box(
+                modifier = Modifier.fillMaxSize().offset(y = 100.dp).zIndex(100f),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                FriendlyMessageBubble(message = friendlyMessage, visible = isMessageVisible)
             }
 
-            // Screenshot Background & Dimming Canvas
-            if (screenshot != null && !isCopyMode) {
+            // Background Screenshot
+            if (screenshot != null) {
                 Box(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
@@ -175,34 +165,37 @@ fun CircleToSearchScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawRect(Color.Black.copy(alpha = 0.15f))
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = OverlayGradientColors.map { it.copy(alpha = 0.15f) }
+                    // Only dim and show drawing UI if NOT in TEXT mode (since Text mode has its own dimming)
+                    if (currentMode != "TEXT") {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawRect(Color.Black.copy(alpha = 0.15f))
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = OverlayGradientColors.map { it.copy(alpha = 0.15f) }
+                                )
                             )
-                        )
-                        
-                        if (selectionRect != null && selectionAnim.value > 0f) {
-                            val rect = selectionRect!!
-                            val holeRect = androidx.compose.ui.geometry.Rect(
-                                rect.left.toFloat(), rect.top.toFloat(),
-                                rect.right.toFloat(), rect.bottom.toFloat()
-                            )
-                            drawRoundRect(
-                                color = Color.Transparent,
-                                topLeft = holeRect.topLeft,
-                                size = holeRect.size,
-                                cornerRadius = CornerRadius(48f),
-                                blendMode = androidx.compose.ui.graphics.BlendMode.Clear
-                            )
+                            
+                            if (selectionRect != null && selectionAnim.value > 0f) {
+                                val rect = selectionRect!!
+                                val holeRect = androidx.compose.ui.geometry.Rect(
+                                    rect.left.toFloat(), rect.top.toFloat(),
+                                    rect.right.toFloat(), rect.bottom.toFloat()
+                                )
+                                drawRoundRect(
+                                    color = Color.Transparent,
+                                    topLeft = holeRect.topLeft,
+                                    size = holeRect.size,
+                                    cornerRadius = CornerRadius(48f),
+                                    blendMode = androidx.compose.ui.graphics.BlendMode.Clear
+                                )
+                            }
                         }
                     }
                 }
             }
 
             // Gradient Border
-            if (uiPreferences.isShowGradientBorder() && !isCopyMode) {
+            if (uiPreferences.isShowGradientBorder()) {
                 AnimatedVisibility(visible = isUIVisible, enter = fadeIn(animationSpec = tween(700))) {
                     Box(
                         modifier = Modifier
@@ -213,8 +206,8 @@ fun CircleToSearchScreen(
                 }
             }
 
-            // Gesture Drawing Logic & Animated Brackets
-            if (!isCopyMode) {
+            // Gesture Drawing Logic (ONLY active in DRAW mode)
+            if (currentMode == "DRAW") {
                 Canvas(
                     modifier = Modifier.fillMaxSize().pointerInput(Unit) {
                         detectDragGestures(
@@ -377,10 +370,10 @@ fun CircleToSearchScreen(
                 }
             }
 
-            // --- END OF PART 1 ---
+// --- END OF PART 1 ---
             // Top Bar
             AnimatedVisibility(
-                visible = isUIVisible && !isCopyMode && !isEntityExtractMode,
+                visible = isUIVisible,
                 enter = slideInVertically(
                     initialOffsetY = { -it }, 
                     animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
@@ -408,9 +401,9 @@ fun CircleToSearchScreen(
                 }
             }
             
-            // Bottom Action Bar (100% Offline Tools)
+            // Bottom Action Bar (Mode Switcher & Offline Tools)
             AnimatedVisibility(
-                visible = isUIVisible && !isCopyMode && !isEntityExtractMode,
+                visible = isUIVisible,
                 enter = slideInVertically(
                     initialOffsetY = { it }, 
                     animationSpec = tween(300, easing = androidx.compose.animation.core.CubicBezierEasing(0f, 0f, 0.2f, 1f))
@@ -437,31 +430,41 @@ fun CircleToSearchScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         @Composable
-                        fun BottomBarButton(label: String, icon: @Composable () -> Unit, enabled: Boolean = true, onClick: () -> Unit) {
+                        fun BottomBarButton(label: String, icon: @Composable () -> Unit, isSelected: Boolean = false, onClick: () -> Unit) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 FilledTonalIconButton(
                                     onClick = { 
                                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                         onClick() 
                                     },
-                                    enabled = enabled,
-                                    modifier = Modifier.size(48.dp)
+                                    modifier = Modifier.size(48.dp),
+                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    )
                                 ) { icon() }
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(label, style = MaterialTheme.typography.labelSmall)
+                                Text(label, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
                         }
 
-                        // Local Text Extraction
-                        BottomBarButton("Extract Text", { Icon(painterResource(id = R.drawable.ocr), null, modifier = Modifier.size(20.dp)) }) {
+                        // Read Text Mode (Default)
+                        BottomBarButton("Read Text", { Icon(painterResource(id = R.drawable.ocr), null, modifier = Modifier.size(20.dp)) }, isSelected = currentMode == "TEXT") {
+                            currentMode = "TEXT"
                             copyTextManager?.setOcrOnlyMode()
-                            isCopyMode = true
+                            selectionRect = null
                         }
 
-                        // Local SmartScan
-                        BottomBarButton("SmartScan", { Icon(Icons.Default.Search, null, modifier = Modifier.size(22.dp)) }) {
-                            isEntityExtractMode = true
-                            if (detectedEntities.isEmpty() && !isExtractingEntities) {
+                        // Draw Region Mode
+                        BottomBarButton("Draw", { Icon(Icons.Default.HighlightAlt, null, modifier = Modifier.size(22.dp)) }, isSelected = currentMode == "DRAW") {
+                            currentMode = "DRAW"
+                            copyTextManager?.dismiss()
+                        }
+
+                        // SmartScan
+                        BottomBarButton("SmartScan", { Icon(Icons.Default.Search, null, modifier = Modifier.size(22.dp)) }, isSelected = isEntityExtractMode) {
+                            isEntityExtractMode = !isEntityExtractMode
+                            if (isEntityExtractMode && detectedEntities.isEmpty() && !isExtractingEntities) {
                                 isExtractingEntities = true
                                 scope.launch(Dispatchers.IO) {
                                     val bmp = screenshot ?: return@launch
@@ -507,48 +510,28 @@ fun CircleToSearchScreen(
                         }
 
                         // Local QR Scan
-                        BottomBarButton("Scan QR", { Icon(Icons.Default.QrCode, null) }) {
+                        BottomBarButton("Scan QR", { Icon(Icons.Default.QrCode, null) }, isSelected = showQrSheet) {
                             qrScanBitmap = selectedBitmap ?: screenshot
                             showQrSheet = true
-                        }
-
-                        // Pin Area
-                        val isPinEnabled = selectedBitmap != null
-                        BottomBarButton("Pin", { Icon(Icons.Default.PushPin, null) }, enabled = isPinEnabled) {
-                            selectedBitmap?.let { bmp ->
-                                CircleToSearchAccessibilityService.pinArea(bmp, selectionRect ?: Rect())
-                                (context as? android.app.Activity)?.finish()
-                            }
                         }
                     }
                 }
             }
 
-            // Entity Extract Dim Background
-            if (isEntityExtractMode) {
-                Box(
-                    modifier = Modifier.fillMaxSize().zIndex(2550f).pointerInput(Unit) {
-                        detectTapGestures { isEntityExtractMode = false }
-                    }
-                )
-            }
-
-            // Copy Text Mode View
-            if (isCopyMode && copyTextManager != null) {
+            // Copy Text Mode View (Active if mode is TEXT)
+            if (currentMode == "TEXT" && copyTextManager != null) {
                 AndroidView(
                     factory = { ctx ->
                         copyTextManager.getOverlayView(onDismiss = {
-                            isCopyMode = false
-                            onExitCopyMode()
+                            // Handled internally, no need to force close
                         })
                     },
                     modifier = Modifier.fillMaxSize().zIndex(150f)
                 )
             }
 
-// --- END OF PART 2 ---
-            // Floating Action Pill (Share / Save Selection)
-            if (selectionRect != null && selectionAnim.value == 1f && !isCopyMode) {
+            // Floating Action Pill (Share / Save Selection for DRAW mode)
+            if (selectionRect != null && selectionAnim.value == 1f && currentMode == "DRAW") {
                 val rect = selectionRect!!
                 val density = androidx.compose.ui.platform.LocalDensity.current
                 val leftPx = rect.left.toFloat()
@@ -656,7 +639,7 @@ fun CircleToSearchScreen(
             }
 
             // QR Code Detected Chips
-            if (screenshot != null && !isCopyMode) {
+            if (screenshot != null && currentMode == "TEXT") {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize().zIndex(2500f)) {
                     val screenWidth = maxWidth
                     val screenHeight = maxHeight
@@ -692,9 +675,8 @@ fun CircleToSearchScreen(
                 }
             }
 
-// --- END OF PART 3A ---
-            // SmartScan Entity Chips (Locally Extracted Links, Phones, Emails)
-            if (isEntityExtractMode && screenshot != null && !isCopyMode) {
+            // SmartScan Entity Chips
+            if (isEntityExtractMode && screenshot != null) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize().zIndex(2600f)) {
                     val screenWidth = maxWidth
                     val screenHeight = maxHeight
@@ -735,7 +717,6 @@ fun CircleToSearchScreen(
                                         }
                                         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                         context.startActivity(intent)
-                                        isEntityExtractMode = false
                                     } catch (e: Exception) {
                                         android.widget.Toast.makeText(context, "No app found to handle this", android.widget.Toast.LENGTH_SHORT).show()
                                     }
@@ -794,4 +775,3 @@ sealed class SmartEntity(
     class Phone(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "Phone", Icons.Default.Phone, Color(0xFF43A047))
     class Upi(text: String, bounds: android.graphics.RectF) : SmartEntity(text, bounds, "UPI", Icons.Default.Person, Color(0xFF8E24AA))
 }
-

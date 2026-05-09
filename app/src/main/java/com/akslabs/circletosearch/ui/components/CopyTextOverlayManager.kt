@@ -1,8 +1,3 @@
-/*
- * Copyright (C) 2025 AKS-Labs
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
 package com.akslabs.circletosearch.ui.components
 
 import android.annotation.SuppressLint
@@ -23,11 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import com.akslabs.circletosearch.data.BitmapRepository
@@ -36,12 +27,8 @@ import com.akslabs.circletosearch.utils.ImageUtils
 import kotlinx.coroutines.*
 import java.util.UUID
 
-/** Simple holder for a floating-toolbar button's label and screen hit-rect. */
 private class ToolbarButton(val label: String, val rect: Rect)
 
-/**
- * Manages the dim+punch-out Copy Text overlay with OCR capabilities.
- */
 class CopyTextOverlayManager(
     private val context: Context,
     private val screenshotBitmap: android.graphics.Bitmap?
@@ -51,15 +38,11 @@ class CopyTextOverlayManager(
     private var scanJob: Job? = null
     private var onDismissCallback: (() -> Unit)? = null
 
-    // State for Compose and Drawing
     private val isScanning = mutableStateOf(false)
     private val textNodes = mutableStateListOf<TextNode>()
     private var allWords: List<Word> = emptyList()
-    
-    // Status message for the user
     private val statusMessage = mutableStateOf<String?>(null)
     
-    // Assistant Data support
     var isAssistMode: Boolean = false
         private set
     
@@ -82,35 +65,27 @@ class CopyTextOverlayManager(
     }
     
     private fun updateAllWords() {
-        allWords = textNodes.flatMap { node -> 
-            node.words.map { word -> 
-                word
-            }
-        }
+        allWords = textNodes.flatMap { node -> node.words }
     }
     
-    // Selection state
     private var globalSelectionStart: Int = -1
     private var globalSelectionEnd: Int = -1
 
     fun getOverlayView(onDismiss: () -> Unit): View {
         onDismissCallback = onDismiss
-        
-        // Reset interactive state
         globalSelectionStart = -1
         globalSelectionEnd = -1
         
         val container = FrameLayout(context)
-        
         val view = DimPunchOutView(context)
         dimView = view
         container.addView(view)
         
-        val topBar = ComposeView(context).apply {
+        val overlayUI = ComposeView(context).apply {
             setContent {
                 MaterialTheme {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        TopBarUI(onClose = { dismiss() })
+                        // The duplicate Top Bar is removed to integrate cleanly with CircleToSearchScreen
                         
                         if (isScanning.value) {
                             Column(
@@ -124,12 +99,12 @@ class CopyTextOverlayManager(
                                 )
                                 Spacer(Modifier.height(16.dp))
                                 Text(
-                                    if (isAssistMode) "Hybrid Deep Scan..." else "Scanning text...", 
+                                    if (isAssistMode) "Hybrid Scan..." else "Extracting text...", 
                                     style = MaterialTheme.typography.titleMedium,
                                     color = ComposeColor.White,
                                     modifier = Modifier
-                                        .background(ComposeColor.Black.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .background(ComposeColor.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
                             }
                         }
@@ -138,117 +113,25 @@ class CopyTextOverlayManager(
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = 100.dp)
+                                    .padding(bottom = 120.dp)
                                     .background(ComposeColor.Black.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
                                     .padding(horizontal = 20.dp, vertical = 10.dp)
                             ) {
-                                Text(
-                                    msg,
-                                    color = ComposeColor.White,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                                Text(msg, color = ComposeColor.White, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
                 }
             }
         }
-        container.addView(topBar)
+        container.addView(overlayUI)
 
         if (isAssistMode) {
-            // Trigger parallel OCR scan even if we have native nodes
             scanNodes(view, isHybrid = true)
         } else {
             scanNodes(view, isHybrid = false)
         }
         return container
-    }
-
-    @Composable
-    private fun TopBarUI(onClose: () -> Unit) {
-        val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-            contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
-        ) { uri: android.net.Uri? ->
-            if (uri != null) {
-                TesseractEngine.importModel(context, uri) { success, msg ->
-                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier
-                    .background(ComposeColor.Black.copy(alpha = 0.35f), CircleShape)
-                    .size(40.dp)
-            ) {
-                Icon(Icons.Default.Close, contentDescription = "Exit Copy Mode", tint = ComposeColor.White)
-            }
-            
-            Spacer(modifier = Modifier.weight(1f))
-
-            Box {
-                var showMenu by remember { mutableStateOf(false) }
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier
-                        .background(ComposeColor.Black.copy(alpha = 0.35f), CircleShape)
-                        .size(40.dp)
-                ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = ComposeColor.White)
-                }
-
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 6.dp
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Select Language / Model") },
-                        onClick = {
-                            showMenu = false
-                            showLanguageModelSelector()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Import Model (.traineddata)") },
-                        onClick = {
-                            showMenu = false
-                            filePickerLauncher.launch("*/*")
-                        }
-                    )
-                }
-            }
-        }
-    }
-
-    private fun Int.toComposeColor(): ComposeColor = ComposeColor(this)
-
-    private fun showLanguageModelSelector() {
-        val models = TesseractEngine.getAvailableModels(context)
-        val prefs = context.getSharedPreferences("OcrSettings", Context.MODE_PRIVATE)
-        val current = prefs.getString("selected_lang", "eng") ?: "eng"
-        
-        android.app.AlertDialog.Builder(context)
-            .setTitle("Select OCR Model")
-            .setSingleChoiceItems(models.toTypedArray(), models.indexOf(current)) { dialog, which ->
-                val selected = models[which]
-                prefs.edit().putString("selected_lang", selected).apply()
-                Toast.makeText(context, "Selected: ${selected.uppercase()}. Restarting scan...", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-                rescanNodes()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     fun dismiss() {
@@ -279,9 +162,7 @@ class CopyTextOverlayManager(
             }
 
             try {
-                // OCR scan runs on background thread
                 val ocrNodes = TesseractEngine.extractText(context, bitmap)
-                
                 if (isHybrid) {
                     mergeHybridNodes(ocrNodes)
                 } else {
@@ -290,12 +171,9 @@ class CopyTextOverlayManager(
                     textNodes.addAll(sortedNodes)
                     updateAllWords()
                 }
-                
                 if (textNodes.isEmpty()) {
                     statusMessage.value = "No text found on screen."
                 }
-                
-                Log.d("CopyTextOverlay", "Capture complete: ${textNodes.size} total nodes")
             } catch (e: Exception) {
                 Log.e("CopyTextOverlay", "Extraction failed: ${e.message}")
             } finally {
@@ -307,18 +185,14 @@ class CopyTextOverlayManager(
 
     private fun mergeHybridNodes(ocrNodes: List<TextNode>) {
         val newNodes = mutableListOf<TextNode>()
-        // Start with existing native nodes
         newNodes.addAll(nativeNodes)
-        
         for (ocr in ocrNodes) {
             if (!isDuplicate(ocr, nativeNodes)) {
-                // Only add if OCR node is within screen bounds (roughly)
                 if (ocr.bounds.left >= -50 && ocr.bounds.top >= -50) {
                     newNodes.add(ocr)
                 }
             }
         }
-        
         val sortedNodes = newNodes.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
         textNodes.clear()
         textNodes.addAll(sortedNodes)
@@ -327,18 +201,14 @@ class CopyTextOverlayManager(
 
     private fun isDuplicate(ocr: TextNode, natives: List<TextNode>): Boolean {
         for (native in natives) {
-            // 1. Coordinate Overlap Check (> 50% overlap)
             val ocrRect = ocr.bounds
             val nativeRect = native.bounds
-            
             val intersect = Rect(ocrRect)
             if (intersect.intersect(nativeRect)) {
                 val intersectArea = intersect.width() * intersect.height()
                 val ocrArea = ocrRect.width() * ocrRect.height()
                 if (intersectArea > ocrArea * 0.5) return true
             }
-            
-            // 2. Text Similarity Check
             val ocrT = ocr.fullText.lowercase().trim()
             val nativeT = native.fullText.lowercase().trim()
             if (nativeT.contains(ocrT) || ocrT.contains(nativeT)) return true
@@ -375,9 +245,7 @@ class CopyTextOverlayManager(
         private var lastTouchX = 0f
         private var lastTouchY = 0f
 
-        init {
-            setLayerType(LAYER_TYPE_SOFTWARE, null)
-        }
+        init { setLayerType(LAYER_TYPE_SOFTWARE, null) }
 
         private fun toLocal(screenRect: Rect): RectF {
             getLocationOnScreen(viewLocation)
@@ -386,16 +254,6 @@ class CopyTextOverlayManager(
                 (screenRect.top - viewLocation[1]).toFloat(),
                 (screenRect.right - viewLocation[0]).toFloat(),
                 (screenRect.bottom - viewLocation[1]).toFloat()
-            )
-        }
-
-        private fun toLocal(screenRectF: RectF): RectF {
-            getLocationOnScreen(viewLocation)
-            return RectF(
-                screenRectF.left - viewLocation[0],
-                screenRectF.top - viewLocation[1],
-                screenRectF.right - viewLocation[0],
-                screenRectF.bottom - viewLocation[1]
             )
         }
 
@@ -423,20 +281,20 @@ class CopyTextOverlayManager(
                     val first = wordsInLine.minBy { it.bounds.left }
                     val last = wordsInLine.maxBy { it.bounds.right }
                     val lineRect = RectF(first.bounds.left, wordsInLine.minOf { it.bounds.top }, last.bounds.right, wordsInLine.maxOf { it.bounds.bottom })
-                    val localHighlight = toLocal(lineRect)
+                    val localHighlight = toLocal(Rect(lineRect.left.toInt(), lineRect.top.toInt(), lineRect.right.toInt(), lineRect.bottom.toInt()))
                     localHighlight.inset(-12f, -8f)
                     highlightPath.addRoundRect(localHighlight, 8f, 8f, Path.Direction.CW)
                 }
                 canvas.drawPath(highlightPath, selectedWordPaint)
 
-                val startLocal = toLocal(allWords[start].bounds)
-                val endLocal = toLocal(allWords[end].bounds)
+                val startLocal = toLocal(Rect(allWords[start].bounds.left.toInt(), allWords[start].bounds.top.toInt(), allWords[start].bounds.right.toInt(), allWords[start].bounds.bottom.toInt()))
+                val endLocal = toLocal(Rect(allWords[end].bounds.left.toInt(), allWords[end].bounds.top.toInt(), allWords[end].bounds.right.toInt(), allWords[end].bounds.bottom.toInt()))
                 drawHandle(canvas, startLocal.left, startLocal.top, true)
                 drawHandle(canvas, endLocal.right, endLocal.bottom, false)
 
                 val encompassing = RectF(allWords[start].bounds)
                 selectedWords.forEach { encompassing.union(it.bounds) }
-                drawFloatingToolbar(canvas, toLocal(encompassing))
+                drawFloatingToolbar(canvas, toLocal(Rect(encompassing.left.toInt(), encompassing.top.toInt(), encompassing.right.toInt(), encompassing.bottom.toInt())))
             }
             canvas.restoreToCount(saveCount)
         }
@@ -448,7 +306,7 @@ class CopyTextOverlayManager(
         }
 
         private fun drawFloatingToolbar(canvas: Canvas, anchor: RectF) {
-            val buttonLabels = listOf("Copy", "Share", "Translate", "All", "Cancel")
+            val buttonLabels = listOf("Copy", "Share", "All", "Cancel")
             val btnPadding = 16f * density
             val btnHeight = 36f * density
             val btnSpacing = 6f * density
@@ -511,8 +369,8 @@ class CopyTextOverlayManager(
                     if (globalSelectionStart != -1) {
                         val start = globalSelectionStart.coerceAtMost(globalSelectionEnd)
                         val end = globalSelectionStart.coerceAtLeast(globalSelectionEnd)
-                        val startLocal = toLocal(allWords[start].bounds)
-                        val endLocal = toLocal(allWords[end].bounds)
+                        val startLocal = toLocal(Rect(allWords[start].bounds.left.toInt(), allWords[start].bounds.top.toInt(), allWords[start].bounds.right.toInt(), allWords[start].bounds.bottom.toInt()))
+                        val endLocal = toLocal(Rect(allWords[end].bounds.left.toInt(), allWords[end].bounds.top.toInt(), allWords[end].bounds.right.toInt(), allWords[end].bounds.bottom.toInt()))
                         if (isPointNear(lx, ly, startLocal.left, startLocal.top)) { dragHandleType = 1; return true }
                         if (isPointNear(lx, ly, endLocal.right, endLocal.bottom)) { dragHandleType = 2; return true }
                     }
@@ -573,33 +431,18 @@ class CopyTextOverlayManager(
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("Copied Text", selectedText))
                     Toast.makeText(context, "Text copied ✓", Toast.LENGTH_SHORT).show()
-                    dismiss()
+                    globalSelectionStart = -1; globalSelectionEnd = -1; invalidate()
                 }
                 "Share" -> {
                     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                         type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, selectedText); addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(android.content.Intent.createChooser(intent, "Share text via").apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
-                    dismiss()
+                    globalSelectionStart = -1; globalSelectionEnd = -1; invalidate()
                 }
                 "All" -> { globalSelectionStart = 0; globalSelectionEnd = allWords.lastIndex; invalidate() }
                 "Cancel" -> { globalSelectionStart = -1; globalSelectionEnd = -1; invalidate() }
-                "Translate" -> { openUrl(context, "https://translate.google.com/?text=${Uri.encode(selectedText)}") }
             }
-        }
-    }
-
-    private fun openUrl(context: Context, url: String) {
-        var finalUrl = url
-        if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-            finalUrl = "https://" + finalUrl
-        }
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } catch (e: Exception) {
-            Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
         }
     }
 }
