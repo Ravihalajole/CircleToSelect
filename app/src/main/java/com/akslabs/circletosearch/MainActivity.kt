@@ -1,23 +1,3 @@
-/*
- *
- *  * Copyright (C) 2025 AKS-Labs (original author)
- *  *
- *  * This program is free software: you can redistribute it and/or modify
- *  * it under the terms of the GNU General Public License as published by
- *  * the Free Software Foundation, either version 3 of the License, or
- *  * (at your option) any later version.
- *  *
- *  * This program is distributed in the hope that it will be useful,
- *  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  * GNU General Public License for more details.
- *  *
- *  * You should have received a copy of the GNU General Public License
- *  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
- */
-
-
 package com.akslabs.circletosearch
 
 import android.content.Intent
@@ -27,7 +7,6 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,28 +16,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogProperties
-import com.akslabs.circletosearch.ui.components.PrivacyDialog
 import com.akslabs.circletosearch.ui.theme.CircleToSearchTheme
-import com.akslabs.circletosearch.utils.PrivacyPreferences
-import com.akslabs.circletosearch.ui.components.DonateBottomSheet
 import com.akslabs.circletosearch.ui.components.AccessibilityDisclosureDialog
-import com.akslabs.circletosearch.ui.components.UnifiedSearchMethodSelector
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -94,16 +61,10 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
     
-    // Privacy Dialog State
-    val privacyPreferences = remember { PrivacyPreferences(context) }
-    var showPrivacyDialog by remember { mutableStateOf(!privacyPreferences.hasAcceptedPrivacyPolicy()) }
-    
-    // Permission States
     var isAccessibilityEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
     var isDefaultAssistant by remember { mutableStateOf(isDefaultAssistant(context)) }
     var showAccessibilityDisclosure by remember { mutableStateOf(false) }
     
-    // Check permissions on Resume
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -113,32 +74,6 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    val showSupportDialog = remember { mutableStateOf(!prefs.getBoolean("support_dialog_dismissed", false)) }
-    val dontShowAgain = remember { mutableStateOf(false) }
-    
-    // Manage Support Dialog Show Count
-    val showCount = remember { prefs.getInt("support_dialog_show_count", 0) }
-    LaunchedEffect(showSupportDialog.value) {
-        if (showSupportDialog.value) {
-            prefs.edit().putInt("support_dialog_show_count", showCount + 1).apply()
-        }
-    }
-    
-    var showDonateSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
-    val scope = rememberCoroutineScope()
-    
-    // Show Privacy Dialog First - User must accept before seeing main UI
-    if (showPrivacyDialog) {
-        PrivacyDialog(
-            onAccept = {
-                privacyPreferences.setPrivacyAccepted()
-                showPrivacyDialog = false
-            }
-        )
-        return // Don't show main UI until accepted
     }
 
     Scaffold(
@@ -154,12 +89,11 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
         ) {
             Spacer(modifier = Modifier.height(32.dp))
             
-            // 1. Header
             Box(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Circle to Search",
+                    text = "Circle to Extract",
                     style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.align(Alignment.Center)
@@ -173,7 +107,7 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Search anything on your screen instantly.",
+                text = "Extract text & entities from your screen instantly, 100% offline.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Start
@@ -181,7 +115,6 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 2. REQUIRED: Accessibility Service
             Text(
                 text = "REQUIRED:",
                 style = MaterialTheme.typography.labelSmall,
@@ -190,12 +123,11 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             )
             
             if (isAccessibilityEnabled) {
-                // Granted State
                 Card(
                      colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                     ),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -216,7 +148,7 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Text(
-                                text = "Double tap status bar to launch CircleToSearch",
+                                text = "Double tap status bar to launch",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
@@ -224,15 +156,12 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                     }
                 }
             } else {
-                 // Action Needed State
                 Card(
-                    onClick = {
-                        showAccessibilityDisclosure = true
-                    },
+                    onClick = { showAccessibilityDisclosure = true },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     ),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -253,8 +182,7 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
                              Text(
-                                text = "To do its job properly, the app needs this permission.\n" +
-                                        "Tap allow and we’re good to go! \uD83D\uDC4D",
+                                text = "Required to capture screen areas and detect gestures locally.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                             )
@@ -265,7 +193,6 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. OPTIONAL: Default Assistant
             Text(
                 text = "OPTIONAL: For Home Button Trigger",
                 style = MaterialTheme.typography.labelSmall,
@@ -274,12 +201,11 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             )
 
             if (isDefaultAssistant) {
-                 // Granted State
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
                     ),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -301,7 +227,6 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                     }
                 }
             } else {
-                 // Action State
                 Card(
                     onClick = {
                         val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
@@ -310,7 +235,7 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer
                     ),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -331,7 +256,7 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Text(
-                                text = "Hold the Home button or edge-swipe up to summon CircleToSearch — like calling your Pokémon.",
+                                text = "Hold Home or swipe up to parse screen text instantly.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
@@ -342,7 +267,6 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 4. Settings (Bubble)
             Text(
                 text = "CUSTOMIZATION",
                 style = MaterialTheme.typography.labelSmall,
@@ -351,122 +275,24 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
             )
             BubbleSwitch(context)
             
-            val uiPreferences = remember { com.akslabs.circletosearch.utils.UIPreferences(context) }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                    .padding(16.dp)
-            ) {
-                UnifiedSearchMethodSelector(
-                    uiPreferences = uiPreferences
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Lens needs Google App Installed. But Degoogled friends can stick with the versatile Multi-Search Engine mode.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
             ListItem(
                 headlineContent = { Text("OCR Language Settings") },
-                supportingContent = { Text("Import custom Tesseract OCR models") },
+                supportingContent = { Text("Manage offline Tesseract OCR models") },
                 trailingContent = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 modifier = Modifier.clickable(onClick = onOcrSettingsClick),
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
             Spacer(modifier = Modifier.height(25.dp))
 
-            // Privacy Note
             Text(
-                text = "That’s it. No more permissions.\n We’re not trying to adopt your phone.",
+                text = "Privacy First.\nNo internet permission required. Your data never leaves your device.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Bold
             )
-
             Spacer(modifier = Modifier.height(32.dp))
-
-
-            // 5. Footer
-            SocialLinksRow(
-                context = context,
-                onDonateClick = { showDonateSheet = true }
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            Box(
-                modifier = Modifier
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                    .clickable {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/aks-labs"))
-                        context.startActivity(intent)
-                    }
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "From AKS-Labs With ❤️",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.height(2.dp))
         }
-    }
-
-    // Support Dialog & Sheet
-    if (showSupportDialog.value) {
-        SupportDialog(
-            showCount = showCount + 1,
-            onDismiss = {
-                showSupportDialog.value = false
-                if (dontShowAgain.value) {
-                    prefs.edit().putBoolean("support_dialog_dismissed", true).apply()
-                }
-            },
-            onDonate = {
-                showDonateSheet = true
-                showSupportDialog.value = false
-                if (dontShowAgain.value) {
-                    prefs.edit().putBoolean("support_dialog_dismissed", true).apply()
-                }
-            },
-            dontShowAgain = dontShowAgain
-        )
-    }
-    
-    if (showDonateSheet) {
-        DonateBottomSheet(
-            onDismiss = { showDonateSheet = false },
-            onDonateOptionSelected = { url ->
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    android.widget.Toast.makeText(context, "Could not open link", android.widget.Toast.LENGTH_SHORT).show()
-                }
-                showDonateSheet = false
-            }
-        )
     }
 
     if (showAccessibilityDisclosure) {
@@ -477,290 +303,31 @@ fun SetupScreen(onSettingsClick: () -> Unit, onOcrSettingsClick: () -> Unit) {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     context.startActivity(intent)
                 } catch (e: Exception) {
-                    android.widget.Toast.makeText(context, "Could not open Accessibility Settings", android.widget.Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Could not open Accessibility Settings", Toast.LENGTH_LONG).show()
                 }
             },
-            onDismiss = {
-                showAccessibilityDisclosure = false
-            }
+            onDismiss = { showAccessibilityDisclosure = false }
         )
     }
 }
 
-// Helper Functions
 fun isAccessibilityServiceEnabled(context: android.content.Context): Boolean {
     val expectedComponentName = android.content.ComponentName(context, CircleToSearchAccessibilityService::class.java)
-    val enabledServicesSetting = Settings.Secure.getString(
-        context.contentResolver,
-        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-    ) ?: return false
-    
+    val enabledServicesSetting = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
     val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
     colonSplitter.setString(enabledServicesSetting)
-    
     while (colonSplitter.hasNext()) {
         val componentNameString = colonSplitter.next()
         val enabledComponent = android.content.ComponentName.unflattenFromString(componentNameString)
-        if (enabledComponent != null && enabledComponent == expectedComponentName)
-            return true
+        if (enabledComponent != null && enabledComponent == expectedComponentName) return true
     }
     return false
 }
 
 fun isDefaultAssistant(context: android.content.Context): Boolean {
-    // Basic check: triggers the settings intent, but actual "is default" check is complex
-    // on some Android versions. For simplified UI, we might relay on user return, 
-    // or use RoleManager on Android 10+. 
-    // For now, let's keep it simple or check specific secure settings if possible.
-    // A reliable check is to see if we are arguably the voice interaction service.
-    
     val assistant = Settings.Secure.getString(context.contentResolver, "voice_interaction_service")
     val component = android.content.ComponentName(context, CircleToSearchVoiceService::class.java)
-    val myComponentString = component.flattenToString()
-    
-    // Check if our VoiceInteractionService is the one currently set as default
-    return assistant == myComponentString
-}
-
-// ... SocialLinksRow, SupportDialog, BubbleSwitch same as before ...
-@Composable
-fun SocialLinksRow(
-    context: android.content.Context,
-    onDonateClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(
-            onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/aks-labs"))
-                context.startActivity(intent)
-            }, 
-            colors = IconButtonDefaults.filledTonalIconButtonColors(),
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = com.akslabs.circletosearch.R.drawable.github),
-                contentDescription = "Github",
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.padding(8.dp)
-            )
-        }
-        
-        IconButton(
-            onClick = onDonateClick, 
-            colors = IconButtonDefaults.filledTonalIconButtonColors(),
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = com.akslabs.circletosearch.R.drawable.donation),
-                contentDescription = "Donate",
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.padding(8.dp)
-            )
-        }
-        
-        IconButton(
-            onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/akslabs"))
-                context.startActivity(intent)
-            }, 
-            colors = IconButtonDefaults.filledTonalIconButtonColors(),
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = com.akslabs.circletosearch.R.drawable.telegram),
-                contentDescription = "Telegram",
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.padding(8.dp).size(23.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun SupportDialog(
-    showCount: Int,
-    onDismiss: () -> Unit,
-    onDonate: () -> Unit,
-    dontShowAgain: MutableState<Boolean>
-) {
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
-    ) {
-        androidx.compose.material3.Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
-        ) {
-            // Outer column: wraps content naturally but caps height at 85% screen height
-            // using BoxWithConstraints so the scroll only kicks in when needed
-            androidx.compose.foundation.layout.BoxWithConstraints(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                val maxDialogHeight = maxHeight * 0.85f
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = maxDialogHeight),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // ── Fixed header (always visible) ──────────────────────────
-                    Column(
-                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            painter = painterResource(id = com.akslabs.circletosearch.R.drawable.donation),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Help Keep this Project \n Alive! ❤️",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    // ── Scrollable body ────────────────────────────────────────
-                    var isExpanded by remember { mutableStateOf(false) }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "Please consider donating to this project Your\n support helps keep this project alive and \n enable us to add amazing \nnew features.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            lineHeight = 22.sp,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(16.dp)
-                                .animateContentSize()
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded },
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Planned Features:",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                TextButton(onClick = { isExpanded = !isExpanded }, contentPadding = PaddingValues(0.dp)) {
-                                    Icon(
-                                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = if (isExpanded) "Collapse" else "Expand",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-
-                            val allFeatures = listOf(
-                                "Self-hosted image upload (remove catbox/litterbox dependency)",
-                                "More triggers: volume button, power button, shake gesture etc.",
-                                "Add more actions to trigger with overlay",
-                                "Offline on-device translation",
-                                "Improved text detection accuracy",
-                                "More Search engines support SearXNG, DuckDuckGo, Brave Search",
-                                "Add more QS tiles to directly launch copy text, QR code, SmartScan etc.",
-                                "Multi-language support",
-                                "More Overlay actions",
-                                "Long-press image to download or share",
-                                "Image result context menu (reverse search, save, open etc.)",
-                                "Material You dynamic theming improvements",
-                                "Floating bubble customization (size, opacity, position)",
-                            )
-
-                            val features = if (isExpanded) allFeatures else allFeatures.take(5)
-
-                            Spacer(modifier = Modifier.height(12.dp))
-                            features.forEach { feature ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Check, null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(text = feature, style = MaterialTheme.typography.bodyMedium)
-                                }
-                            }
-                        }
-
-                        if (showCount >= 7) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                    .clickable { dontShowAgain.value = !dontShowAgain.value }
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Checkbox(
-                                    checked = dontShowAgain.value,
-                                    onCheckedChange = { dontShowAgain.value = it }
-                                )
-                                Text(
-                                    text = "Don't show this again",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-
-                    // ── Fixed bottom buttons (always visible) ──────────────────
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = onDismiss) {
-                            Text("Close")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = onDonate,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
-                        ) {
-                            Text("Donate", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    return assistant == component.flattenToString()
 }
 
 @Composable
@@ -770,7 +337,7 @@ fun BubbleSwitch(context: android.content.Context) {
 
     ListItem(
         headlineContent = { Text("Floating Bubble") },
-        supportingContent = { Text("Show a floating button triggers search") },
+        supportingContent = { Text("Show a floating button to trigger extraction") },
         trailingContent = {
             Switch(
                 checked = isBubbleEnabled.value,
@@ -780,9 +347,6 @@ fun BubbleSwitch(context: android.content.Context) {
                 }
             )
         },
-        colors = ListItemDefaults.colors(
-            containerColor = Color.Transparent
-        )
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
 }
-

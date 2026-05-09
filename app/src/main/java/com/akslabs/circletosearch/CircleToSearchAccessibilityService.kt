@@ -512,14 +512,7 @@ class CircleToSearchAccessibilityService : AccessibilityService() {
                  // Respect Global Preference
                  performCapture(null)
             }
-            ActionType.CTS_LENS -> {
-                 // Force Lens Mode for this session only
-                 performCapture(true)
-            }
-            ActionType.CTS_MULTI -> {
-                 // Force Multi Mode for this session only
-                 performCapture(false)
-            }
+            
             ActionType.SPLIT_SCREEN -> {
                  val success = performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
                  if (!success) {

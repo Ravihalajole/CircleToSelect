@@ -46,9 +46,7 @@ enum class ActionType {
     LOCK_SCREEN,
     OPEN_NOTIFICATIONS,
     OPEN_QUICK_SETTINGS,
-    CTS_AUTO,
-    CTS_LENS,
-    CTS_MULTI,
+    CTS_AUTO, // We keep this as the main offline trigger
     SPLIT_SCREEN,
     OPEN_APP,
     SCROLL_TOP,
@@ -70,9 +68,7 @@ fun ActionType.getFriendlyName(): String = when (this) {
     ActionType.LOCK_SCREEN -> "Lock Screen"
     ActionType.OPEN_NOTIFICATIONS -> "Open Notifications"
     ActionType.OPEN_QUICK_SETTINGS -> "Quick Settings"
-    ActionType.CTS_AUTO -> "Circle to Search"
-    ActionType.CTS_LENS -> "Google Lens Search"
-    ActionType.CTS_MULTI -> "Multi-Search"
+    ActionType.CTS_AUTO -> "Circle to Extract" // Updated name to reflect offline parsing
     ActionType.SPLIT_SCREEN -> "Split Screen"
     ActionType.OPEN_APP -> "Open Application"
     ActionType.SCROLL_TOP -> "Scroll to Top"
@@ -83,6 +79,7 @@ fun ActionType.getFriendlyName(): String = when (this) {
     ActionType.MEDIA_NEXT -> "Media Next"
     ActionType.MEDIA_PREVIOUS -> "Media Previous"
 }
+
 
 fun GestureType.getFriendlyName(): String = when (this) {
     GestureType.DOUBLE_TAP -> "Double Tap"

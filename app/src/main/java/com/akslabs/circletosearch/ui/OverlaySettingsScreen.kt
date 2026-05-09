@@ -511,8 +511,6 @@ fun getActionIcon(action: ActionType): ImageVector = when (action) {
     ActionType.LOCK_SCREEN -> Icons.Default.Lock
     ActionType.OPEN_NOTIFICATIONS -> Icons.Default.Notifications
     ActionType.OPEN_QUICK_SETTINGS -> Icons.Default.Settings
-    ActionType.CTS_LENS -> Icons.Default.Search
-    ActionType.CTS_MULTI -> Icons.Default.TravelExplore
     ActionType.SPLIT_SCREEN -> Icons.Default.VerticalSplit
     ActionType.OPEN_APP -> Icons.Default.Apps
     ActionType.SCROLL_TOP -> Icons.Default.VerticalAlignTop
@@ -524,6 +522,7 @@ fun getActionIcon(action: ActionType): ImageVector = when (action) {
     ActionType.MEDIA_NEXT -> Icons.Default.SkipNext
     ActionType.MEDIA_PREVIOUS -> Icons.Default.SkipPrevious
 }
+
 
 @Composable
 fun AppPickerDialog(onDismiss: () -> Unit, onAppSelected: (String) -> Unit) {
