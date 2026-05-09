@@ -12,14 +12,14 @@ plugins {
 android {
     namespace = "com.akslabs.circletosearch"
     // Standard stable compileSdk is 35; use 36 only if targeting Android 16 previews
-    compileSdk = 35 
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.akslabs.circletosearch"
         minSdk = 29
-        targetSdk = 35 
-        versionCode = 7
-        versionName = "0.5"
+        targetSdk = 36
+        versionCode = 8
+        versionName = "0.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -64,7 +64,9 @@ android {
     }
 
     dependenciesInfo {
+    	@Suppress("UnstableApiUsage")
         includeInApk = false
+        @Suppress("UnstableApiUsage")
         includeInBundle = false
     }
 
