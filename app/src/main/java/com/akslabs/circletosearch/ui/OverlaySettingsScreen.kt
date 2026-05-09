@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.akslabs.circletosearch.data.*
+import com.akslabs.circletosearch.data.ActionType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
