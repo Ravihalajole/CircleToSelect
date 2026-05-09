@@ -105,8 +105,6 @@ dependencies {
     // Utilities
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.google.zxing:core:3.5.4")
-    
-    // THE STAR OF THE SHOW: Bundled ML Kit (100% Offline)
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
     // Note: tesseract4android and webkit have been removed 
