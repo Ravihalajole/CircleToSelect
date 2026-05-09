@@ -29,7 +29,7 @@ class UIPreferences(context: Context) {
     }
 
     fun isShowFriendlyMessages(): Boolean {
-        return prefs.getBoolean(KEY_SHOW_FRIENDLY_MESSAGES, false)
+        return prefs.getBoolean(KEY_SHOW_FRIENDLY_MESSAGES, true)
     }
 
     fun setShowFriendlyMessages(isEnabled: Boolean) {
